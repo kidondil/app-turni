@@ -1,0 +1,43 @@
+{
+  "summary": "Backend: 16/16 pytest tests passed (100%). Frontend: User selector, home, calendar, profile screens render correctly with Italian labels, admin badge, stats and admin panel. Mobile-first design (390x844) looks clean.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/notifications/mark-all-read", "issue": "Takes user_id via query string (works) — consistent with patch swaps/leaves pattern. Acceptable."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Home → Squadra di oggi (today)", "issue": "Today is 2026-05-20 but shifts are only seeded for 2026-02 and 2026-03, so home screen + calendar show 'Nessuno assegnato' for current/visible month. Not a code bug, but UX-wise the admin should generate shifts for current month or the seed should include current month so the demo feels alive.", "affected_testIDs": []},
+      {"flow": "Swaps tab", "issue": "Could not verify Ricevute/Inviate tab labels via inner_text scan (no screenshot taken in time). Backend swap flow works end-to-end; minor UI verification gap.", "affected_testIDs": []}
+    ],
+    "design_issues": [
+      {"screen": "Global", "issues": ["Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' — non-blocking React Native Web deprecation."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_backend.py", "/app/test_reports/pytest/results.xml"],
+  "action_items": [
+    "Consider auto-generating shifts for the current month (2026-05) on first boot so the Home/Calendar screens feel populated for the demo. Currently only Feb/Mar 2026 have shifts.",
+    "Replace deprecated `props.pointerEvents` with `style.pointerEvents` to silence RN Web warning.",
+    "Optional: Verify Swaps tab Ricevute/Inviate labels render — manual quick check recommended."
+  ],
+  "critical_code_review_comments": [
+    "server.py is a single 611-line file — manageable but consider splitting into routers (users/shifts/swaps/leaves) if it grows.",
+    "Endpoint DELETE /api/shifts/month/{month} is registered AFTER DELETE /api/shifts/{shift_id}; FastAPI matches by registration order so '/shifts/month/xxx' is correctly routed to delete_month (verified via test). Good.",
+    "shifts generator correctly skips users on approved leave and avoids double-booking same day; total_load and holiday_load drive fair rotation. Algorithm verified — Feb 2026 produces 336 shifts with exactly 1 Autista + 1 Capoturno + 2 Soccorritori per shift.",
+    "MongoDB _id properly excluded via projection on every query. Good.",
+    "No input validation on date strings (YYYY-MM-DD) for shifts/leaves — relies on consumers. Consider adding pydantic validator.",
+    "create_notification uses dict.copy() before insert to keep returned object clean. Good pattern."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_backend.py (created)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "~95%"},
+  "seed_data_creation": "Tests created/cleaned-up TEST_ scoped data: a 2027-01 generated month (deleted), one ad-hoc 2027-06-15 shift (deleted), a 2027-08-01..10 approved leave for Marco Rossi (left in DB — pending status moved to approved). Two swap requests in 2026-03 between two Autisti that net to zero (shift restored).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/test_backend.py covers users, shifts (generate+CRUD+composition), swaps (same-role + cross-role rejection + accept transfer), leaves (create+approve+admin notification), notifications, stats, CSV export, holidays. Uses EXPO_PUBLIC_BACKEND_URL from frontend/.env. Shifts seeded only for 2026-02 and 2026-03. Admin = Stefano Conti.",
+  "rca_of_issue": "N/A — no bugs reproduced. Only observation: today (2026-05) has no shifts because seeding only covered Feb/Mar 2026."
+}

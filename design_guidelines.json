@@ -1,0 +1,94 @@
+{
+  "theme": "Light",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) adapted for Rescue/Medical",
+  "language": "Italian",
+  "colors": {
+    "background": "#F8F9FA",
+    "surface": "#FFFFFF",
+    "primary": "#FACC15",
+    "primary_foreground": "#111111",
+    "secondary": "#111111",
+    "secondary_foreground": "#FFFFFF",
+    "accent_mattina": "#FBBF24",
+    "accent_pomeriggio": "#F97316",
+    "accent_notte": "#111111",
+    "danger": "#EF4444",
+    "border": "#E4E4E7",
+    "text_primary": "#111111",
+    "text_secondary": "#52525B"
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Outfit, sans-serif",
+      "body": "IBM Plex Sans, sans-serif",
+      "mono": "IBM Plex Mono, monospace"
+    },
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl tracking-tight font-bold text-text_primary",
+      "h2": "text-2xl tracking-tight font-semibold text-text_primary",
+      "h3": "text-xl font-medium text-text_primary",
+      "body": "text-base leading-relaxed text-text_secondary",
+      "mono_label": "text-xs font-mono tracking-[0.2em] uppercase text-text_secondary"
+    }
+  },
+  "layout_spacing": {
+    "container": "w-full sm:max-w-md mx-auto min-h-screen flex flex-col bg-zinc-50 relative overflow-hidden sm:shadow-2xl sm:border sm:border-zinc-200",
+    "spacing_scale": "Use p-4 and p-6 for general padding. Generous spacing for touch targets.",
+    "border_radius": "rounded-2xl for major cards, rounded-full for pills/tags",
+    "borders": "1px solid border-zinc-200 for definition. No soft fuzzy shadows."
+  },
+  "components": {
+    "UserSelector": {
+      "description": "Grid of 16 users grouped by role. No authentication required.",
+      "styles": "grid grid-cols-2 gap-4",
+      "item": "flex flex-col items-center justify-center p-6 bg-white border border-zinc-200 rounded-2xl active:scale-95 transition-transform"
+    },
+    "ShiftCard": {
+      "description": "Displays daily shift info. Color-coded by shift type.",
+      "base_styles": "w-full p-5 rounded-2xl border flex flex-col gap-3 relative overflow-hidden",
+      "variants": {
+        "mattina": "bg-yellow-50 border-yellow-200 text-yellow-900",
+        "pomeriggio": "bg-orange-50 border-orange-200 text-orange-900",
+        "notte": "bg-zinc-900 border-zinc-800 text-white"
+      }
+    },
+    "BottomNavigation": {
+      "description": "Sticky bottom tab bar for mobile.",
+      "styles": "fixed bottom-0 w-full sm:max-w-md bg-white/90 backdrop-blur-xl border-t border-zinc-200 flex justify-around items-center p-4 pb-8 z-50"
+    },
+    "Button": {
+      "primary": "h-14 bg-yellow-400 text-zinc-900 font-semibold rounded-xl w-full flex items-center justify-center text-lg active:scale-95 transition-all shadow-sm",
+      "secondary": "h-14 bg-zinc-900 text-white font-semibold rounded-xl w-full flex items-center justify-center text-lg active:scale-95 transition-all shadow-sm",
+      "outline": "h-14 bg-transparent border-2 border-zinc-200 text-zinc-900 font-semibold rounded-xl w-full flex items-center justify-center text-lg active:scale-95 transition-all"
+    }
+  },
+  "visual_enhancers": {
+    "shadows": "shadow-sm for flat elements. Avoid heavy drop shadows. Rely on structural borders.",
+    "glassmorphism": "backdrop-blur-xl bg-white/80 border-t border-zinc-200 for bottom nav.",
+    "icons": "Use lucide-react with high-contrast stroke widths (2px or 2.5px)."
+  },
+  "media_urls": [
+    {
+      "category": "hero_background",
+      "url": "https://images.unsplash.com/photo-1601206915837-8db8f8174cc9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwyfHx5ZWxsb3clMjBhYnN0cmFjdCUyMHRleHR1cmV8ZW58MHx8fHwxNzc5MjYwNzQ2fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Yellow and black abstract painting, useful for the user selection header to inject the 'dark and yellow tones' aesthetic."
+    },
+    {
+      "category": "avatar_placeholder_ambulance",
+      "url": "https://images.pexels.com/photos/27914806/pexels-photo-27914806.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Paramedic inside ambulance, good for header graphic or generic team graphic."
+    }
+  ],
+  "instructions_to_main_agent": [
+    "CRITICAL: All interactive and key informational elements MUST include a `data-testid` attribute (e.g., `data-testid='user-select-button'`).",
+    "Build a mobile-first UI. Force a max-width constraint (e.g., `w-full sm:max-w-md mx-auto min-h-screen`) so it behaves like a mobile app even on desktop browsers.",
+    "No login flow! The initial screen must be a 'Select User' view grouping the 16 people into 3 roles: Autisti (5), Capoturno (5), Soccorritori (6).",
+    "Shift Rules: Mattina (08:00-14:00), Pomeriggio (14:00-20:00), Trasporti/Notte (20:00-08:00).",
+    "Color Code Shifts: Mattina=Yellow, Pomeriggio=Orange, Notte=Black.",
+    "Use Italian language for all UI elements (es: Turni, Calendario, Scambia Turno, Richiedi Ferie, Esporta).",
+    "Implement a sticky Bottom Navigation bar for core routes: Home (Turni), Calendario, Scambi (Swaps), Profilo/Admin.",
+    "Admin section must include features to generate shifts (fair rotation), manual edit, and holiday tracker (rotation for Ferie like Ferragosto).",
+    "Implement an export feature (PDF/CSV) for the monthly calendar.",
+    "Use standard Tailwind classes. For Shadcn components (if used), ensure they fit the mobile form factor (e.g., full width buttons, large touch targets)."
+  ]
+}
