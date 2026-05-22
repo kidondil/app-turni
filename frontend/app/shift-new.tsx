@@ -38,14 +38,26 @@ const [selectedUser, setSelectedUser] = useState<string | null>(params.user_id |
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/shifts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, shift_type: shiftType, user_id: selectedUser }),
-      });
-      if (res.ok) {
-        Alert.alert("Successo", "Turno creato", [{ text: "OK", onPress: () => router.back() }]);
-      } else {
+      const res = await fetch(
+  isEdit ? `${API_URL}/api/shifts/${params.shift_id}` : `${API_URL}/api/shifts`,
+  {
+    method: isEdit ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      date,
+      shift_type: shiftType,
+      user_id: selectedUser,
+    }),
+  }
+);
+
+if (res.ok) {
+  Alert.alert(
+    "Successo",
+    isEdit ? "Turno modificato" : "Turno creato",
+    [{ text: "OK", onPress: () => router.back() }]
+  );
+} else {
         const err = await res.json();
         Alert.alert("Errore", err.detail || "Operazione fallita");
       }
