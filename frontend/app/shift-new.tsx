@@ -20,7 +20,7 @@ export default function ShiftNewScreen() {
   const isEdit = params.mode === "edit" && !!params.shift_id;
   const [date] = useState(params.date || new Date().toISOString().slice(0, 10));
   const [shiftType, setShiftType] = useState<"Mattina" | "Pomeriggio" | "Notte">(params.shift_type || "Mattina");
-const [selectedUser, setSelectedUser] = useState<string | null>(params.user_id || null);
+  const [selectedUser, setSelectedUser] = useState<string | null>(params.user_id || null);
   const [submitting, setSubmitting] = useState(false);
 
   if (!currentUser?.is_admin) {
@@ -74,7 +74,9 @@ if (res.ok) {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="close" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Nuovo turno</Text>
+        <Text style={styles.title}>
+  {isEdit ? "Modifica turno" : "Nuovo turno"}
+</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -132,7 +134,13 @@ if (res.ok) {
           disabled={!selectedUser || submitting}
           testID="submit-shift"
         >
-          <Text style={styles.submitText}>{submitting ? "Salvataggio..." : "Crea turno"}</Text>
+          <Text style={styles.submitText}>
+  {submitting
+    ? "Salvataggio..."
+    : isEdit
+    ? "Salva modifiche"
+    : "Crea turno"}
+</Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
