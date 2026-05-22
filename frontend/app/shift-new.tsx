@@ -9,10 +9,18 @@ import { colors, shiftStyle, roleColor, API_URL } from "@/src/theme";
 export default function ShiftNewScreen() {
   const { currentUser, users } = useUser();
   const router = useRouter();
-  const params = useLocalSearchParams<{ date?: string }>();
+  const params = useLocalSearchParams<{
+  date?: string;
+  shift_id?: string;
+  user_id?: string;
+  shift_type?: "Mattina" | "Pomeriggio" | "Notte";
+  mode?: string;
+}>();
+
+  const isEdit = params.mode === "edit" && !!params.shift_id;
   const [date] = useState(params.date || new Date().toISOString().slice(0, 10));
-  const [shiftType, setShiftType] = useState<"Mattina" | "Pomeriggio" | "Notte">("Mattina");
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const [shiftType, setShiftType] = useState<"Mattina" | "Pomeriggio" | "Notte">(params.shift_type || "Mattina");
+const [selectedUser, setSelectedUser] = useState<string | null>(params.user_id || null);
   const [submitting, setSubmitting] = useState(false);
 
   if (!currentUser?.is_admin) {
