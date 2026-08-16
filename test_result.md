@@ -16,6 +16,17 @@
 # 
 ## user_problem_statement: {problem_statement}
 ## backend:
+##   - task: "Più turni nello stesso giorno e annullamenti"
+##     implemented: true
+##     working: "NA"
+##     file: "backend/server.py"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Consentite più fasce manuali nello stesso giorno, compresa Mattina+Notte; aggiunti annullamento ferie proprie attive e scambi propri ancora pendenti, con storico e notifiche. Test isolati aggiornati a 15 casi; da eseguire nell'ambiente locale con le dipendenze backend."
 ##   - task: "Task name"
 ##     implemented: true
 ##     working: true  # or false or "NA"
@@ -29,6 +40,17 @@
 ##         -comment: "Detailed comment about status"
 ##
 ## frontend:
+##   - task: "Visualizzazione turni multipli e pulsanti di annullamento"
+##     implemented: true
+##     working: true
+##     file: "frontend/app/(tabs)/home.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: true
+##         agent: "main"
+##         comment: "Home aggiornata per mostrare tutte le fasce odierne; annullamento ferie disponibile in Ferie e Profilo, annullamento scambio nelle richieste inviate. TypeScript, lint ed export web statico superati."
 ##   - task: "Task name"
 ##     implemented: true
 ##     working: true  # or false or "NA"
@@ -196,11 +218,12 @@
 ##         comment: "Aggiunti login PIN, migrazione dati esistenti, cambio PIN personale e reset PIN da parte dell’admin; lint e TypeScript superati."
 ## metadata:
 ##   created_by: "main_agent"
-##   version: "1.3"
-##   test_sequence: 5
+##   version: "1.4"
+##   test_sequence: 6
 ##   run_ui: false
 ## test_plan:
-##   current_focus: []
+##   current_focus:
+##     - "Più turni nello stesso giorno e annullamenti"
 ##   stuck_tasks: []
 ##   test_all: true
 ##   test_priority: "high_first"
@@ -211,3 +234,5 @@
 ##     message: "Suite finale: 9 test backend superati; lint e TypeScript senza errori; export web statico completato. I test sono locali e non modificano servizi esterni."
 ##   - agent: "main"
 ##     message: "Suite PIN/autorizzazioni integrata: 12 test backend superati; lint e TypeScript senza errori."
+##   - agent: "main"
+##     message: "Versione 1.4: frontend verificato con typecheck, lint ed export web. La suite backend comprende ora 15 test e va rilanciata localmente perché questo ambiente non include le dipendenze Python di test."

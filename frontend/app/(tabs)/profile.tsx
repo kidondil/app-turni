@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors, roleColor } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
-import { formatIsoDateIt } from "@/src/utils/dates";
+import { formatIsoDateIt, todayIsoLocal } from "@/src/utils/dates";
 
 type Stats = {
   total_shifts: number;
@@ -75,6 +75,29 @@ export default function ProfileScreen() {
     } catch (e) {
       Alert.alert("Errore", apiErrorMessage(e));
     }
+  };
+
+  const cancelLeave = (leave: Leave) => {
+    Alert.alert(
+      "Annulla ferie",
+      `Vuoi annullare la richiesta dal ${formatIsoDateIt(leave.start_date)} al ${formatIsoDateIt(leave.end_date)}?`,
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Sì, annulla",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await apiRequest(`/api/leaves/${leave.id}/cancel`, { method: "PATCH" });
+              Alert.alert("Ferie annullate", "La richiesta è stata annullata correttamente");
+              load();
+            } catch (error) {
+              Alert.alert("Errore", apiErrorMessage(error, "Impossibile annullare le ferie"));
+            }
+          },
+        },
+      ],
+    );
   };
 
   const markAllRead = async () => {
@@ -269,13 +292,19 @@ export default function ProfileScreen() {
               <View key={l.id} style={styles.leaveCard}>
                 <View style={styles.leaveTop}>
                   <Text style={styles.leaveDates}>{formatIsoDateIt(l.start_date)} → {formatIsoDateIt(l.end_date)}</Text>
-                  <View style={[styles.statusPill, l.status === "approved" ? { backgroundColor: "#D1FAE5" } : l.status === "rejected" ? { backgroundColor: "#FEE2E2" } : { backgroundColor: "#FEF3C7" }]}>
-                    <Text style={[styles.statusPillText, { color: l.status === "approved" ? "#065F46" : l.status === "rejected" ? "#991B1B" : "#92400E" }]}>
-                      {l.status === "approved" ? "Approvata" : l.status === "rejected" ? "Rifiutata" : "In attesa"}
+                  <View style={[styles.statusPill, leaveStatusStyle(l.status).box]}>
+                    <Text style={[styles.statusPillText, leaveStatusStyle(l.status).text]}>
+                      {leaveStatusLabel(l.status)}
                     </Text>
                   </View>
                 </View>
                 {l.reason && <Text style={styles.leaveReason}>“{l.reason}”</Text>}
+                {["pending", "approved"].includes(l.status) && l.end_date >= todayIsoLocal() && (
+                  <TouchableOpacity style={styles.cancelLeaveBtn} onPress={() => cancelLeave(l)}>
+                    <Ionicons name="close-circle-outline" size={17} color={colors.danger} />
+                    <Text style={styles.cancelLeaveText}>Annulla richiesta</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ))}
           </>
@@ -311,6 +340,14 @@ export default function ProfileScreen() {
     </SafeAreaView>
   );
 }
+
+const leaveStatusLabel = (status: string) => status === "approved" ? "Approvata" : status === "rejected" ? "Rifiutata" : status === "cancelled" ? "Annullata" : "In attesa";
+const leaveStatusStyle = (status: string) => {
+  if (status === "approved") return { box: { backgroundColor: "#D1FAE5" }, text: { color: "#065F46" } };
+  if (status === "rejected") return { box: { backgroundColor: "#FEE2E2" }, text: { color: "#991B1B" } };
+  if (status === "cancelled") return { box: { backgroundColor: "#E4E4E7" }, text: { color: "#52525B" } };
+  return { box: { backgroundColor: "#FEF3C7" }, text: { color: "#92400E" } };
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
@@ -352,6 +389,8 @@ const styles = StyleSheet.create({
   approveText: { color: colors.primaryFg, fontWeight: "700" },
   rejectBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: "center" },
   rejectText: { color: colors.textPrimary, fontWeight: "600" },
+  cancelLeaveBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.danger, marginTop: 10 },
+  cancelLeaveText: { color: colors.danger, fontWeight: "700", fontSize: 13 },
   notifRow: { flexDirection: "row", alignItems: "flex-start", padding: 12, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 6, gap: 8 },
   notifUnread: { borderColor: colors.primary, backgroundColor: "#FEFCE8" },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginTop: 6 },

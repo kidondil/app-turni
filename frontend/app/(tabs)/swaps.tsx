@@ -61,6 +61,29 @@ export default function SwapsScreen() {
     }
   };
 
+  const cancelSwap = (swap: Swap) => {
+    Alert.alert(
+      "Annulla scambio",
+      `Vuoi annullare la richiesta per il turno ${swap.shift_type} del ${formatIsoDateIt(swap.shift_date)}?`,
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Sì, annulla",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await apiRequest(`/api/swaps/${swap.id}?action=cancel`, { method: "PATCH" });
+              Alert.alert("Scambio annullato", "La richiesta è stata annullata correttamente");
+              load();
+            } catch (e) {
+              Alert.alert("Errore", apiErrorMessage(e, "Impossibile annullare lo scambio"));
+            }
+          },
+        },
+      ],
+    );
+  };
+
   if (!currentUser) return null;
 
   const incoming = swaps.filter((s) => s.to_user_id === currentUser.id);
@@ -151,6 +174,16 @@ export default function SwapsScreen() {
                         </TouchableOpacity>
                       </View>
                     )}
+                    {!isIncoming && s.status === "pending" && (
+                      <TouchableOpacity
+                        style={styles.cancelBtn}
+                        onPress={() => cancelSwap(s)}
+                        testID={`cancel-${s.id}`}
+                      >
+                        <Ionicons name="close-circle-outline" size={17} color={colors.danger} />
+                        <Text style={styles.cancelText}>Annulla richiesta</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 );
               })}
@@ -167,10 +200,11 @@ export default function SwapsScreen() {
   );
 }
 
-const statusLabel = (s: string) => s === "pending" ? "In attesa" : s === "accepted" ? "Accettato" : "Rifiutato";
+const statusLabel = (s: string) => s === "pending" ? "In attesa" : s === "accepted" ? "Accettato" : s === "cancelled" ? "Annullato" : "Rifiutato";
 const statusStyle = (s: string) => {
   if (s === "accepted") return { box: { backgroundColor: "#D1FAE5" }, text: { color: "#065F46" } };
   if (s === "rejected") return { box: { backgroundColor: "#FEE2E2" }, text: { color: "#991B1B" } };
+  if (s === "cancelled") return { box: { backgroundColor: "#E4E4E7" }, text: { color: "#52525B" } };
   return { box: { backgroundColor: "#FEF3C7" }, text: { color: "#92400E" } };
 };
 
@@ -204,6 +238,8 @@ const styles = StyleSheet.create({
   rejectText: { color: colors.textPrimary, fontWeight: "600" },
   acceptBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: colors.primary, alignItems: "center" },
   acceptText: { color: colors.primaryFg, fontWeight: "700" },
+  cancelBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.danger, marginTop: 12 },
+  cancelText: { color: colors.danger, fontWeight: "700", fontSize: 13 },
   fabBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 14, gap: 6, marginTop: 8 },
   fabText: { color: colors.primaryFg, fontWeight: "700", fontSize: 15 },
 });

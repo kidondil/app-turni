@@ -26,6 +26,11 @@ export const formatIsoDateIt = (isoDate?: string | null) => {
 export const isoDateFromParts = (year: number, monthIndex: number, day: number) =>
   `${year.toString().padStart(4, "0")}-${(monthIndex + 1).toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
 
+export const todayIsoLocal = () => {
+  const today = new Date();
+  return isoDateFromParts(today.getFullYear(), today.getMonth(), today.getDate());
+};
+
 export const dateFromIso = (isoDate?: string | null) => {
   if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
   const [year, month, day] = isoDate.split("-").map(Number);

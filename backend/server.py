@@ -38,7 +38,7 @@ async def lifespan(_: FastAPI):
     client.close()
 
 
-app = FastAPI(title="LAPS Turni API", version="1.3.1", lifespan=lifespan)
+app = FastAPI(title="LAPS Turni API", version="1.4.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 ROLE_AUTISTA = "Autista"
@@ -146,7 +146,7 @@ class SwapRequest(BaseModel):
     shift_id: str
     shift_date: str
     shift_type: str
-    status: str  # pending/accepted/rejected
+    status: str  # pending/accepted/rejected/cancelled
     created_at: str
     message: Optional[str] = None
 
@@ -165,7 +165,7 @@ class LeaveRequest(BaseModel):
     start_date: str
     end_date: str
     reason: Optional[str] = None
-    status: str  # pending/approved/rejected
+    status: str  # pending/approved/rejected/cancelled
     created_at: str
 
 
@@ -523,11 +523,6 @@ async def validate_shift_assignment(
     def ignore_current(query: dict):
         if ignored_ids:
             query["id"] = {"$nin": ignored_ids}
-
-    same_day_query = {"date": date_str, "user_id": user["id"]}
-    ignore_current(same_day_query)
-    if await db.shifts.find_one(same_day_query, {"_id": 0}):
-        raise HTTPException(409, f"{user['name']} ha già un turno il {format_iso_date_it(date_str)}")
 
     occupied_role_query = {
         "date": date_str,
@@ -1363,13 +1358,36 @@ async def respond_swap(
     action: str,
     current_user: dict = Depends(get_current_user),
 ):
-    if action not in ["accept", "reject"]:
+    if action not in ["accept", "reject", "cancel"]:
         raise HTTPException(400, "Azione non valida")
     swap = await db.swaps.find_one({"id": swap_id}, {"_id": 0})
     if not swap:
         raise HTTPException(404, "Scambio non trovato")
     if swap["status"] != "pending":
-        raise HTTPException(400, "Scambio già processato")
+        raise HTTPException(409, "Scambio già elaborato")
+
+    if action == "cancel":
+        if current_user["id"] != swap["from_user_id"] and not current_user.get("is_admin"):
+            raise HTTPException(403, "Solo il richiedente può annullare lo scambio")
+        await db.swaps.update_one(
+            {"id": swap_id},
+            {"$set": {"status": "cancelled"}},
+        )
+        await create_notification(
+            swap["to_user_id"],
+            "Scambio annullato",
+            f"{swap['from_user_name']} ha annullato la richiesta per il turno {swap['shift_type']} del {format_iso_date_it(swap['shift_date'])}",
+            "swap",
+        )
+        if current_user["id"] != swap["from_user_id"]:
+            await create_notification(
+                swap["from_user_id"],
+                "Scambio annullato dall'amministratore",
+                f"La richiesta per il turno {swap['shift_type']} del {format_iso_date_it(swap['shift_date'])} è stata annullata",
+                "swap",
+            )
+        return {"ok": True, "status": "cancelled"}
+
     if current_user["id"] != swap["to_user_id"] and not current_user.get("is_admin"):
         raise HTTPException(403, "Solo il destinatario può rispondere allo scambio")
 
@@ -1548,6 +1566,54 @@ async def respond_leave(
         "leave",
     )
     return {"ok": True, "status": new_status}
+
+
+@api_router.patch("/leaves/{leave_id}/cancel")
+async def cancel_leave(
+    leave_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    leave = await db.leaves.find_one({"id": leave_id}, {"_id": 0})
+    if not leave:
+        raise HTTPException(404, "Richiesta non trovata")
+    if current_user["id"] != leave["user_id"] and not current_user.get("is_admin"):
+        raise HTTPException(403, "Puoi annullare soltanto le tue ferie")
+    if leave["status"] not in ["pending", "approved"]:
+        raise HTTPException(409, "Richiesta già elaborata")
+    if leave["end_date"] < today_italy().isoformat():
+        raise HTTPException(409, "Non puoi annullare un periodo già concluso")
+
+    await db.leaves.update_one(
+        {"id": leave_id},
+        {"$set": {"status": "cancelled"}},
+    )
+
+    owner = await db.users.find_one({"id": leave["user_id"]}, {"_id": 0})
+    if owner:
+        same_role = await db.users.find(
+            {"role": owner["role"], "id": {"$ne": owner["id"]}},
+            {"_id": 0, "id": 1},
+        ).to_list(200)
+        admins = await db.users.find(
+            {"is_admin": True, "id": {"$ne": owner["id"]}},
+            {"_id": 0, "id": 1},
+        ).to_list(20)
+        audience = [member["id"] for member in [*same_role, *admins]]
+        await create_notifications(
+            audience,
+            "Ferie annullate",
+            f"{owner['name']} ha annullato le ferie dal {format_iso_date_it(leave['start_date'])} al {format_iso_date_it(leave['end_date'])}",
+            "leave",
+        )
+        if current_user["id"] != owner["id"]:
+            await create_notification(
+                owner["id"],
+                "Ferie annullate dall'amministratore",
+                f"La richiesta dal {format_iso_date_it(leave['start_date'])} al {format_iso_date_it(leave['end_date'])} è stata annullata",
+                "leave",
+            )
+
+    return {"ok": True, "status": "cancelled"}
 
 
 # ===== NOTIFICATIONS =====

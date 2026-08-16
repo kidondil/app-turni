@@ -41,7 +41,7 @@ export default function HomeScreen() {
   const { currentUser } = useUser();
   const router = useRouter();
   const [todayShifts, setTodayShifts] = useState<Shift[]>([]);
-  const [myShift, setMyShift] = useState<Shift | null>(null);
+  const [myShifts, setMyShifts] = useState<Shift[]>([]);
   const [upcoming, setUpcoming] = useState<Shift[]>([]);
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,8 +59,8 @@ export default function HomeScreen() {
         apiRequest<Notification[]>(`/api/notifications?user_id=${currentUser.id}`),
       ]);
       setTodayShifts(todayData);
-      const mineToday = mineData.find((s) => s.date === todayStr);
-      setMyShift(mineToday || null);
+      const mineToday = mineData.filter((s) => s.date === todayStr);
+      setMyShifts(mineToday);
       const future = mineData.filter((s) => s.date > todayStr).slice(0, 5);
       setUpcoming(future);
       setNotifs(notifData);
@@ -119,18 +119,25 @@ export default function HomeScreen() {
         </View>
 
         {/* My Today's Shift */}
-        <Text style={styles.sectionTitle}>Il mio turno oggi</Text>
-        {myShift ? (
-          <View style={[styles.myShiftCard, { backgroundColor: shiftStyle(myShift.shift_type).bg, borderColor: shiftStyle(myShift.shift_type).border }]}>
-            <View style={styles.myShiftRow}>
-              <View>
-                <Text style={[styles.myShiftType, { color: shiftStyle(myShift.shift_type).text }]}>{myShift.shift_type}</Text>
-                <Text style={[styles.myShiftTime, { color: shiftStyle(myShift.shift_type).text }]}>{shiftStyle(myShift.shift_type).time}</Text>
-              </View>
-              <View style={[styles.roleBadge, { backgroundColor: roleColor(currentUser.role) }]}>
-                <Text style={styles.roleBadgeText}>{currentUser.role}</Text>
-              </View>
-            </View>
+        <Text style={styles.sectionTitle}>{myShifts.length > 1 ? "I miei turni oggi" : "Il mio turno oggi"}</Text>
+        {myShifts.length > 0 ? (
+          <View style={styles.myShiftsList}>
+            {myShifts.map((myShift) => {
+              const ss = shiftStyle(myShift.shift_type);
+              return (
+                <View key={myShift.id} style={[styles.myShiftCard, { backgroundColor: ss.bg, borderColor: ss.border }]}>
+                  <View style={styles.myShiftRow}>
+                    <View>
+                      <Text style={[styles.myShiftType, { color: ss.text }]}>{myShift.shift_type}</Text>
+                      <Text style={[styles.myShiftTime, { color: ss.text }]}>{ss.time}</Text>
+                    </View>
+                    <View style={[styles.roleBadge, { backgroundColor: roleColor(currentUser.role) }]}>
+                      <Text style={styles.roleBadgeText}>{currentUser.role}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
           </View>
         ) : (
           <View style={styles.emptyCard}>
@@ -221,6 +228,7 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 24, marginBottom: 12 },
   linkText: { color: colors.primaryFg, fontSize: 14, fontWeight: "600" },
   myShiftCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  myShiftsList: { gap: 10 },
   myShiftRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   myShiftType: { fontSize: 24, fontWeight: "700" },
   myShiftTime: { fontSize: 14, marginTop: 4, opacity: 0.85 },

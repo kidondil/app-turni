@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
-import { formatIsoDateIt } from "@/src/utils/dates";
+import { formatIsoDateIt, todayIsoLocal } from "@/src/utils/dates";
 
 type Leave = {
   id: string;
@@ -72,6 +72,29 @@ export default function LeavesScreen() {
     } catch (e) {
       Alert.alert("Errore", apiErrorMessage(e));
     }
+  };
+
+  const cancelLeave = (leave: Leave) => {
+    Alert.alert(
+      "Annulla ferie",
+      `Vuoi annullare la richiesta dal ${formatIsoDateIt(leave.start_date)} al ${formatIsoDateIt(leave.end_date)}?`,
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Sì, annulla",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await apiRequest(`/api/leaves/${leave.id}/cancel`, { method: "PATCH" });
+              Alert.alert("Ferie annullate", "La richiesta è stata annullata correttamente");
+              load();
+            } catch (e) {
+              Alert.alert("Errore", apiErrorMessage(e, "Impossibile annullare le ferie"));
+            }
+          },
+        },
+      ],
+    );
   };
 
   if (!currentUser) return null;
@@ -150,6 +173,16 @@ export default function LeavesScreen() {
                 </View>
               </View>
               {l.reason && <Text style={styles.cardReason}>“{l.reason}”</Text>}
+              {tab === "mine" && ["pending", "approved"].includes(l.status) && l.end_date >= todayIsoLocal() && (
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => cancelLeave(l)}
+                  testID={`cancel-${l.id}`}
+                >
+                  <Ionicons name="close-circle-outline" size={17} color={colors.danger} />
+                  <Text style={styles.cancelText}>Annulla richiesta</Text>
+                </TouchableOpacity>
+              )}
               {currentUser.is_admin && l.status === "pending" && (
                 <View style={styles.actions}>
                   <TouchableOpacity style={styles.rejectBtn} onPress={() => respondLeave(l.id, "reject")} testID={`reject-${l.id}`}>
@@ -169,10 +202,11 @@ export default function LeavesScreen() {
   );
 }
 
-const statusLabel = (s: string) => s === "pending" ? "In attesa" : s === "approved" ? "Approvata" : "Rifiutata";
+const statusLabel = (s: string) => s === "pending" ? "In attesa" : s === "approved" ? "Approvata" : s === "cancelled" ? "Annullata" : "Rifiutata";
 const statusStyle = (s: string) => {
   if (s === "approved") return { box: { backgroundColor: "#D1FAE5" }, text: { color: "#065F46" } };
   if (s === "rejected") return { box: { backgroundColor: "#FEE2E2" }, text: { color: "#991B1B" } };
+  if (s === "cancelled") return { box: { backgroundColor: "#E4E4E7" }, text: { color: "#52525B" } };
   return { box: { backgroundColor: "#FEF3C7" }, text: { color: "#92400E" } };
 };
 
@@ -198,6 +232,8 @@ const styles = StyleSheet.create({
   cardUser: { fontSize: 14, fontWeight: "700", color: colors.textPrimary },
   cardDates: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   cardReason: { fontSize: 13, color: colors.textSecondary, fontStyle: "italic", marginTop: 8 },
+  cancelBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.danger, marginTop: 12 },
+  cancelText: { color: colors.danger, fontWeight: "700", fontSize: 13 },
   statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   statusText: { fontSize: 11, fontWeight: "700" },
   actions: { flexDirection: "row", gap: 8, marginTop: 12 },

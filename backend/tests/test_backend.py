@@ -202,9 +202,15 @@ def test_shift_create_edit_and_conflict_validation(api, users):
     assert created.status_code == 200
     shift_id = created.json()["id"]
 
-    assert create_shift(api, autisti[0], day, "Pomeriggio").status_code == 409
+    afternoon = create_shift(api, autisti[0], day, "Pomeriggio")
+    assert afternoon.status_code == 200
+    night = create_shift(api, autisti[0], day, "Notte")
+    assert night.status_code == 200
     assert create_shift(api, autisti[1], day).status_code == 409
     assert create_shift(api, capoturno, day).status_code == 200
+
+    assert api.delete(f"/api/shifts/{afternoon.json()['id']}").status_code == 200
+    assert api.delete(f"/api/shifts/{night.json()['id']}").status_code == 200
 
     updated = api.put(
         f"/api/shifts/{shift_id}",
@@ -287,18 +293,36 @@ def test_complete_team_can_be_created_updated_and_deleted(api, users):
     )
     assert incomplete.status_code == 422
 
+    same_people_at_night = api.put(
+        "/api/shift-teams",
+        json={
+            "date": day,
+            "shift_type": "Notte",
+            "user_ids": [autisti[1]["id"], capoturno["id"], soccorritore["id"]],
+        },
+    )
+    assert same_people_at_night.status_code == 200, same_people_at_night.text
+    assert len(same_people_at_night.json()) == 3
+
     deleted = api.delete(
         "/api/shift-teams",
         params={"date_str": day, "shift_type": "Mattina"},
     )
     assert deleted.status_code == 200
     assert deleted.json()["deleted"] == 3
+    deleted_night = api.delete(
+        "/api/shift-teams",
+        params={"date_str": day, "shift_type": "Notte"},
+    )
+    assert deleted_night.status_code == 200
+    assert deleted_night.json()["deleted"] == 3
     assert api.get("/api/shifts", params={"date_str": day}).json() == []
 
 
 def test_manual_assignment_respects_night_recovery(api, users):
     autista = by_role(users, "Autista")[0]
     assert create_shift(api, autista, "2030-02-10", "Notte").status_code == 200
+    assert create_shift(api, autista, "2030-02-10", "Mattina").status_code == 200
     assert create_shift(api, autista, "2030-02-11", "Mattina").status_code == 409
     assert create_shift(api, autista, "2030-02-12", "Pomeriggio").status_code == 409
     assert create_shift(api, autista, "2030-02-13", "Mattina").status_code == 200
@@ -507,15 +531,101 @@ def test_swap_requires_ownership_and_valid_recipient(api, users):
     assert updated_shift["user_id"] == autisti[1]["id"]
 
 
+def test_users_can_cancel_own_leave_and_swap_requests(api, users):
+    autisti = by_role(users, "Autista")
+    admin_headers = dict(api.headers)
+    owner_headers = login_headers(api, autisti[1], "1102")
+    other_headers = login_headers(api, autisti[2], "1103")
+
+    leave = api.post(
+        "/api/leaves",
+        json={
+            "user_id": autisti[1]["id"],
+            "start_date": "2039-10-10",
+            "end_date": "2039-10-12",
+        },
+        headers=owner_headers,
+    )
+    assert leave.status_code == 200, leave.text
+    leave_id = leave.json()["id"]
+    assert api.patch(
+        f"/api/leaves/{leave_id}/cancel",
+        headers=other_headers,
+    ).status_code == 403
+    assert api.patch(
+        f"/api/leaves/{leave_id}",
+        params={"action": "approve"},
+        headers=admin_headers,
+    ).status_code == 200
+    cancelled_leave = api.patch(
+        f"/api/leaves/{leave_id}/cancel",
+        headers=owner_headers,
+    )
+    assert cancelled_leave.status_code == 200
+    assert cancelled_leave.json()["status"] == "cancelled"
+    assert api.patch(
+        f"/api/leaves/{leave_id}/cancel",
+        headers=owner_headers,
+    ).status_code == 409
+    replacement_leave = api.post(
+        "/api/leaves",
+        json={
+            "user_id": autisti[1]["id"],
+            "start_date": "2039-10-10",
+            "end_date": "2039-10-12",
+        },
+        headers=owner_headers,
+    )
+    assert replacement_leave.status_code == 200
+
+    shift = create_shift(api, autisti[1], "2039-11-10", "Mattina")
+    assert shift.status_code == 200
+    swap = api.post(
+        "/api/swaps",
+        json={
+            "from_user_id": autisti[1]["id"],
+            "to_user_id": autisti[2]["id"],
+            "shift_id": shift.json()["id"],
+        },
+        headers=owner_headers,
+    )
+    assert swap.status_code == 200, swap.text
+    swap_id = swap.json()["id"]
+    assert api.patch(
+        f"/api/swaps/{swap_id}",
+        params={"action": "cancel"},
+        headers=other_headers,
+    ).status_code == 403
+    cancelled_swap = api.patch(
+        f"/api/swaps/{swap_id}",
+        params={"action": "cancel"},
+        headers=owner_headers,
+    )
+    assert cancelled_swap.status_code == 200
+    assert cancelled_swap.json()["status"] == "cancelled"
+    assert api.patch(
+        f"/api/swaps/{swap_id}",
+        params={"action": "cancel"},
+        headers=owner_headers,
+    ).status_code == 409
+    recipient_notifications = api.get(
+        "/api/notifications",
+        params={"user_id": autisti[2]["id"]},
+        headers=other_headers,
+    ).json()
+    assert any(item["title"] == "Scambio annullato" for item in recipient_notifications)
+
+
 def test_stats_and_csv_export(api, users):
     user = by_role(users, "Autista")[0]
     assert create_shift(api, user, "2037-07-01", "Mattina").status_code == 200
+    assert create_shift(api, user, "2037-07-01", "Pomeriggio").status_code == 200
     assert create_shift(api, user, "2037-07-04", "Notte").status_code == 200
 
     stats = api.get(f"/api/stats/{user['id']}", params={"year": 2037})
     assert stats.status_code == 200
-    assert stats.json()["total_shifts"] == 2
-    assert stats.json()["total_hours"] == 18
+    assert stats.json()["total_shifts"] == 3
+    assert stats.json()["total_hours"] == 24
 
     exported = api.get("/api/export/2037-07")
     assert exported.status_code == 200

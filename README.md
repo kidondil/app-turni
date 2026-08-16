@@ -8,13 +8,13 @@ Ogni turno è composto da tre persone:
 - 1 Capoturno
 - 1 Soccorritore
 
-I turni sono Mattina (08:00-14:00), Pomeriggio (14:00-20:00) e Notte (20:00-08:00). Dopo la notte vengono rispettati un giorno di smontante e uno di riposo.
+I turni sono Mattina (08:00-14:00), Pomeriggio (14:00-20:00) e Notte (20:00-08:00). Nella composizione manuale la stessa persona può coprire più fasce nello stesso giorno, comprese combinazioni eccezionali come Mattina e Notte. Dopo la notte vengono comunque rispettati un giorno di smontante e uno di riposo.
 
 Ogni operatore accede con un PIN personale da 4 a 6 cifre. I PIN non vengono salvati in chiaro: il backend conserva soltanto un hash con salt e pepper. Il browser ricorda l'accesso sul dispositivo per un anno, salvo disconnessione volontaria o cancellazione dei dati del browser; cinque PIN errati bloccano temporaneamente nuovi tentativi.
 
 L'amministratore può comporre manualmente ogni turno scegliendo insieme un Autista, un Capoturno e un Soccorritore. Dalla pagina del giorno si apre **Modifica squadra** per sostituire un componente; l'eliminazione dell'intera squadra è disponibile all'interno della modifica con una conferma esplicita. Gli scambi approvati restano visibili perché aggiornano direttamente l'assegnazione del turno.
 
-Le date sono mostrate nel formato italiano `GG/MM/AAAA`. Per le ferie si può digitare il periodo oppure aprire il calendario e selezionare direttamente il primo e l'ultimo giorno.
+Le date sono mostrate nel formato italiano `GG/MM/AAAA`. Per le ferie si può digitare il periodo oppure aprire il calendario e selezionare direttamente il primo e l'ultimo giorno. Ogni operatore può annullare una propria richiesta di ferie ancora attiva, anche se già approvata, purché il periodo non sia concluso. Può inoltre annullare uno scambio inviato finché è ancora in attesa; le richieste restano nello storico con lo stato **Annullata** o **Annullato**.
 
 ## Notifiche
 
