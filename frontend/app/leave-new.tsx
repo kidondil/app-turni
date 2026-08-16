@@ -6,6 +6,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
+import { DateRangeCalendar } from "@/src/components/DateRangeCalendar";
+import { formatDateInputIt, formatIsoDateIt, parseDateInputIt } from "@/src/utils/dates";
 
 export default function LeaveNewScreen() {
   const { currentUser } = useUser();
@@ -14,28 +16,17 @@ export default function LeaveNewScreen() {
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  const formatDateInput = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 8);
-    if (digits.length <= 4) return digits;
-    if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
-    return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
-  };
-
-  const validateDate = (value: string) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-    const [year, month, day] = value.split("-").map(Number);
-    const parsed = new Date(year, month - 1, day);
-    return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
-  };
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const submit = async () => {
     if (!currentUser) return;
-    if (!validateDate(startDate) || !validateDate(endDate)) {
-      Alert.alert("Errore", "Inserisci le date nel formato AAAA-MM-GG");
+    const startIso = parseDateInputIt(startDate);
+    const endIso = parseDateInputIt(endDate);
+    if (!startIso || !endIso) {
+      Alert.alert("Errore", "Inserisci le date nel formato GG/MM/AAAA");
       return;
     }
-    if (startDate > endDate) {
+    if (startIso > endIso) {
       Alert.alert("Errore", "La data di inizio deve essere precedente a quella di fine");
       return;
     }
@@ -46,8 +37,8 @@ export default function LeaveNewScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: currentUser.id,
-          start_date: startDate,
-          end_date: endDate,
+          start_date: startIso,
+          end_date: endIso,
           reason,
         }),
       });
@@ -75,29 +66,48 @@ export default function LeaveNewScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
-          <Text style={styles.label}>Data inizio</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="AAAA-MM-GG"
-            placeholderTextColor={colors.textMuted}
-            value={startDate}
-            onChangeText={(value) => setStartDate(formatDateInput(value))}
-            keyboardType="number-pad"
-            maxLength={10}
-            testID="start-date-input"
-          />
+          <Text style={styles.label}>Periodo richiesto</Text>
+          <TouchableOpacity style={styles.calendarBtn} onPress={() => setCalendarOpen(true)} testID="open-leave-calendar">
+            <View style={styles.calendarIcon}>
+              <Ionicons name="calendar" size={22} color={colors.primaryFg} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.calendarBtnTitle}>Scegli dal calendario</Text>
+              <Text style={styles.calendarBtnText}>
+                {startDate && endDate ? `${startDate} → ${endDate}` : "Seleziona il primo e l’ultimo giorno"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
 
-          <Text style={styles.label}>Data fine</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="AAAA-MM-GG"
-            placeholderTextColor={colors.textMuted}
-            value={endDate}
-            onChangeText={(value) => setEndDate(formatDateInput(value))}
-            keyboardType="number-pad"
-            maxLength={10}
-            testID="end-date-input"
-          />
+          <View style={styles.dateRow}>
+            <View style={styles.dateColumn}>
+              <Text style={styles.dateLabel}>Dal</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="GG/MM/AAAA"
+                placeholderTextColor={colors.textMuted}
+                value={startDate}
+                onChangeText={(value) => setStartDate(formatDateInputIt(value))}
+                keyboardType="number-pad"
+                maxLength={10}
+                testID="start-date-input"
+              />
+            </View>
+            <View style={styles.dateColumn}>
+              <Text style={styles.dateLabel}>Al</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="GG/MM/AAAA"
+                placeholderTextColor={colors.textMuted}
+                value={endDate}
+                onChangeText={(value) => setEndDate(formatDateInputIt(value))}
+                keyboardType="number-pad"
+                maxLength={10}
+                testID="end-date-input"
+              />
+            </View>
+          </View>
 
           <Text style={styles.label}>Motivazione (opzionale)</Text>
           <TextInput
@@ -120,6 +130,17 @@ export default function LeaveNewScreen() {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <DateRangeCalendar
+        visible={calendarOpen}
+        startDate={parseDateInputIt(startDate) || ""}
+        endDate={parseDateInputIt(endDate) || ""}
+        onChange={(startIso, endIso) => {
+          setStartDate(formatIsoDateIt(startIso));
+          setEndDate(formatIsoDateIt(endIso));
+        }}
+        onClose={() => setCalendarOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -131,6 +152,13 @@ const styles = StyleSheet.create({
   title: { flex: 1, textAlign: "center", fontSize: 17, fontWeight: "700", color: colors.textPrimary },
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
   label: { fontSize: 14, fontWeight: "700", color: colors.textPrimary, marginBottom: 8, marginTop: 16 },
+  calendarBtn: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
+  calendarIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
+  calendarBtnTitle: { fontSize: 14, fontWeight: "700", color: colors.textPrimary },
+  calendarBtnText: { fontSize: 11, color: colors.textSecondary, marginTop: 3 },
+  dateRow: { flexDirection: "row", gap: 10, marginTop: 14 },
+  dateColumn: { flex: 1 },
+  dateLabel: { fontSize: 12, fontWeight: "700", color: colors.textSecondary, marginBottom: 6 },
   input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border, fontSize: 14, color: colors.textPrimary },
   submitBtn: { backgroundColor: colors.primary, padding: 16, borderRadius: 14, alignItems: "center", marginTop: 32 },
   submitBtnDisabled: { opacity: 0.4 },

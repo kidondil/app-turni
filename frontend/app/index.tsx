@@ -155,6 +155,10 @@ export default function UserSelectorScreen() {
               testID="login-pin"
               onSubmitEditing={handleLogin}
             />
+            <View style={styles.rememberRow}>
+              <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+              <Text style={styles.rememberText}>Resta connesso su questo dispositivo</Text>
+            </View>
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.cancelButton} onPress={() => setSelectedUser(null)} disabled={signingIn}>
                 <Text style={styles.cancelText}>Annulla</Text>
@@ -205,6 +209,8 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: "700", color: colors.textPrimary, textAlign: "center" },
   modalSubtitle: { fontSize: 13, color: colors.textSecondary, textAlign: "center", marginTop: 5, marginBottom: 18 },
   pinInput: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 15, fontSize: 24, textAlign: "center", letterSpacing: 8, color: colors.textPrimary },
+  rememberRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12 },
+  rememberText: { fontSize: 12, color: colors.textSecondary, fontWeight: "600" },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 16 },
   cancelButton: { flex: 1, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center" },
   cancelText: { color: colors.textPrimary, fontWeight: "600" },

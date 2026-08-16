@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors, roleColor } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
+import { formatIsoDateIt } from "@/src/utils/dates";
 
 type Stats = {
   total_shifts: number;
@@ -155,7 +156,7 @@ export default function ProfileScreen() {
                 <View key={i} style={[styles.holidayRow, i > 0 && styles.holidayBorder]}>
                   <Ionicons name="star" size={16} color={colors.danger} />
                   <Text style={styles.holidayName}>{h.name}</Text>
-                  <Text style={styles.holidayDate}>{h.date}</Text>
+                  <Text style={styles.holidayDate}>{formatIsoDateIt(h.date)}</Text>
                 </View>
               ))}
               <Text style={styles.holidayNote}>Nel prossimo anno avrai priorità per non lavorarle</Text>
@@ -243,7 +244,7 @@ export default function ProfileScreen() {
                 {pendingLeaves.map((l) => (
                   <View key={l.id} style={styles.leaveCard}>
                     <Text style={styles.leaveUser}>{l.user_name}</Text>
-                    <Text style={styles.leaveDates}>{l.start_date} → {l.end_date}</Text>
+                    <Text style={styles.leaveDates}>{formatIsoDateIt(l.start_date)} → {formatIsoDateIt(l.end_date)}</Text>
                     {l.reason && <Text style={styles.leaveReason}>“{l.reason}”</Text>}
                     <View style={styles.leaveActions}>
                       <TouchableOpacity style={styles.rejectBtn} onPress={() => respondLeave(l.id, "reject")}>
@@ -267,7 +268,7 @@ export default function ProfileScreen() {
             {myLeaves.map((l) => (
               <View key={l.id} style={styles.leaveCard}>
                 <View style={styles.leaveTop}>
-                  <Text style={styles.leaveDates}>{l.start_date} → {l.end_date}</Text>
+                  <Text style={styles.leaveDates}>{formatIsoDateIt(l.start_date)} → {formatIsoDateIt(l.end_date)}</Text>
                   <View style={[styles.statusPill, l.status === "approved" ? { backgroundColor: "#D1FAE5" } : l.status === "rejected" ? { backgroundColor: "#FEE2E2" } : { backgroundColor: "#FEF3C7" }]}>
                     <Text style={[styles.statusPillText, { color: l.status === "approved" ? "#065F46" : l.status === "rejected" ? "#991B1B" : "#92400E" }]}>
                       {l.status === "approved" ? "Approvata" : l.status === "rejected" ? "Rifiutata" : "In attesa"}

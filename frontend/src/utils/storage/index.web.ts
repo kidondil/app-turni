@@ -9,6 +9,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AssertNoExtras, StorageBase, StorageItemValue } from "./storage-base";
 
 export class Storage extends StorageBase {
+  private secureKey(key: string) {
+    return `laps_turni_secure_${key}`;
+  }
+
+  private browserStorage() {
+    return typeof window === "undefined" ? null : window.localStorage;
+  }
+
   // General KV — backed by AsyncStorage (its built-in web shim uses IndexedDB).
   async getItem<Fallback extends StorageItemValue>(
     key: string,
@@ -46,23 +54,52 @@ export class Storage extends StorageBase {
     }
   }
 
-  // Browsers have no Keychain — secure* helpers fall through to AsyncStorage.
+  // Auth data uses localStorage directly so a normal browser keeps the session
+  // after the page or browser is closed. A legacy AsyncStorage value is migrated.
   async secureGet<Fallback extends StorageItemValue>(
     key: string,
     fallback: Fallback,
   ): Promise<Fallback | null> {
-    return this.getItem(key, fallback);
+    try {
+      const browserStorage = this.browserStorage();
+      const raw = browserStorage?.getItem(this.secureKey(key)) ?? null;
+      if (raw !== null) return this.retrieve(raw, fallback);
+    } catch (e) {
+      this.warn("secureGet", key, e);
+    }
+
+    const legacyValue = await this.getItem(key, fallback);
+    if (legacyValue !== null && legacyValue !== fallback) {
+      await this.secureSet(key, legacyValue);
+    }
+    return legacyValue;
   }
 
   async secureSet<Value extends StorageItemValue>(
     key: string,
     value: Value,
   ): Promise<boolean> {
-    return this.setItem(key, value);
+    try {
+      const browserStorage = this.browserStorage();
+      if (!browserStorage) return this.setItem(key, value);
+      browserStorage.setItem(this.secureKey(key), JSON.stringify(value));
+      return true;
+    } catch (e) {
+      this.warn("secureSet", key, e);
+      return this.setItem(key, value);
+    }
   }
 
   async secureRemove(key: string): Promise<boolean> {
-    return this.removeItem(key);
+    let removed = true;
+    try {
+      this.browserStorage()?.removeItem(this.secureKey(key));
+    } catch (e) {
+      this.warn("secureRemove", key, e);
+      removed = false;
+    }
+    const legacyRemoved = await this.removeItem(key);
+    return removed && legacyRemoved;
   }
 }
 

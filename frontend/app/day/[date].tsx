@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors, shiftStyle, roleColor } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
+import { formatIsoDateIt } from "@/src/utils/dates";
 
 type Shift = {
   id: string;
@@ -49,38 +50,17 @@ export default function DayDetailScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const deleteShift = (id: string) => {
-    if (!currentUser?.is_admin) return;
-    Alert.alert("Conferma", "Eliminare questo turno?", [
-      { text: "Annulla", style: "cancel" },
-      {
-        text: "Elimina", style: "destructive",
-        onPress: async () => {
-          try {
-            await apiRequest(`/api/shifts/${id}`, { method: "DELETE" });
-            load();
-          } catch (error) {
-            Alert.alert("Errore", apiErrorMessage(error, "Eliminazione non riuscita"));
-          }
-        },
-      },
-    ]);
-  };
-
   const requestSwap = (shift: Shift) => {
     router.push({ pathname: "/swap-new", params: { shift_id: shift.id } });
   };
 
-  const editShift = (shift: Shift) => {
+  const manageTeam = (shiftType: string) => {
     if (!currentUser?.is_admin) return;
     router.push({
       pathname: "/shift-new",
       params: {
-        mode: "edit",
-        shift_id: shift.id,
-        date: shift.date,
-        shift_type: shift.shift_type,
-        user_id: shift.user_id,
+        date,
+        shift_type: shiftType,
       },
     });
   };
@@ -99,7 +79,7 @@ export default function DayDetailScreen() {
           <Ionicons name="chevron-back" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerDate}>{date}</Text>
+          <Text style={styles.headerDate}>{formatIsoDateIt(date)}</Text>
           <Text style={styles.headerDay}>{date ? formatDateIt(date) : ""}</Text>
         </View>
       </View>
@@ -118,11 +98,29 @@ export default function DayDetailScreen() {
           return (
             <View key={type} style={[styles.shiftBlock, { backgroundColor: ss.bg, borderColor: ss.border }]}>
               <View style={styles.shiftBlockHeader}>
-                <Text style={[styles.shiftTitle, { color: ss.text }]}>{type}</Text>
-                <Text style={[styles.shiftTime, { color: ss.text }]}>{ss.time}</Text>
+                <View>
+                  <Text style={[styles.shiftTitle, { color: ss.text }]}>{type}</Text>
+                  <Text style={[styles.shiftTime, { color: ss.text }]}>{ss.time}</Text>
+                </View>
+                {currentUser?.is_admin && members.length > 0 && (
+                  <View style={styles.teamActions}>
+                    <TouchableOpacity style={styles.teamActionBtn} onPress={() => manageTeam(type)} testID={`edit-team-${type}`}>
+                      <Ionicons name="pencil" size={15} color={ss.text} />
+                      <Text style={[styles.teamActionText, { color: ss.text }]}>Modifica</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
               {members.length === 0 ? (
-                <Text style={[styles.emptyText, { color: ss.text }]}>Nessuno assegnato</Text>
+                <View style={styles.emptyRow}>
+                  <Text style={[styles.emptyText, { color: ss.text }]}>Nessuno assegnato</Text>
+                  {currentUser?.is_admin && (
+                    <TouchableOpacity style={styles.createTeamBtn} onPress={() => manageTeam(type)} testID={`create-team-${type}`}>
+                      <Ionicons name="add" size={16} color={ss.text} />
+                      <Text style={[styles.teamActionText, { color: ss.text }]}>Crea squadra</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               ) : (
                 members.map((m) => {
                   const isMe = m.user_id === currentUser?.id;
@@ -142,16 +140,6 @@ export default function DayDetailScreen() {
                           <Text style={[styles.swapBtnText, { color: ss.text }]}>Scambia</Text>
                         </TouchableOpacity>
                       )}
-                      {currentUser?.is_admin && (
-                        <>
-                          <TouchableOpacity style={styles.iconBtn} onPress={() => editShift(m)} testID={`edit-${m.id}`}>
-                            <Ionicons name="pencil" size={16} color={ss.text} />
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.iconBtn} onPress={() => deleteShift(m.id)} testID={`del-${m.id}`}>
-                            <Ionicons name="trash-outline" size={16} color={ss.text} />
-                          </TouchableOpacity>
-                        </>
-                      )}
                     </View>
                   );
                 })
@@ -159,13 +147,6 @@ export default function DayDetailScreen() {
             </View>
           );
         })}
-
-        {currentUser?.is_admin && (
-          <TouchableOpacity style={styles.addBtn} onPress={() => router.push({ pathname: "/shift-new", params: { date } })} testID="add-shift-btn">
-            <Ionicons name="add-circle" size={20} color={colors.primaryFg} />
-            <Text style={styles.addBtnText}>Aggiungi turno</Text>
-          </TouchableOpacity>
-        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -184,9 +165,14 @@ const styles = StyleSheet.create({
   holidayText: { color: colors.danger, fontWeight: "700", fontSize: 13 },
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
   shiftBlock: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 12 },
-  shiftBlockHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
+  shiftBlockHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   shiftTitle: { fontSize: 18, fontWeight: "700" },
-  shiftTime: { fontSize: 13, fontWeight: "500", opacity: 0.85 },
+  shiftTime: { fontSize: 13, fontWeight: "500", opacity: 0.85, marginTop: 2 },
+  teamActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  teamActionBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9, borderWidth: 1, borderColor: "rgba(0,0,0,0.12)" },
+  teamActionText: { fontSize: 11, fontWeight: "700" },
+  emptyRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  createTeamBtn: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9, borderWidth: 1, borderColor: "rgba(0,0,0,0.12)" },
   emptyText: { fontSize: 13, opacity: 0.7, fontStyle: "italic" },
   memberRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, gap: 10 },
   memberDot: { width: 10, height: 10, borderRadius: 5 },
@@ -194,7 +180,4 @@ const styles = StyleSheet.create({
   memberRole: { fontSize: 11, marginTop: 2 },
   swapBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" },
   swapBtnText: { fontSize: 11, fontWeight: "600" },
-  iconBtn: { padding: 6 },
-  addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, padding: 14, borderRadius: 14, gap: 8, marginTop: 8 },
-  addBtnText: { color: colors.primaryFg, fontWeight: "700", fontSize: 14 },
 });

@@ -229,6 +229,73 @@ def test_shift_create_edit_and_conflict_validation(api, users):
     assert api.get("/api/shifts", params={"month": "2030-["}).status_code == 400
 
 
+def test_complete_team_can_be_created_updated_and_deleted(api, users):
+    day = "2030-01-20"
+    autisti = by_role(users, "Autista")
+    capoturno = by_role(users, "Capoturno")[0]
+    soccorritore = by_role(users, "Soccorritore")[0]
+
+    created = api.put(
+        "/api/shift-teams",
+        json={
+            "date": day,
+            "shift_type": "Mattina",
+            "user_ids": [autisti[0]["id"], capoturno["id"], soccorritore["id"]],
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert len(created.json()) == 3
+    assert {shift["role"] for shift in created.json()} == {
+        "Autista",
+        "Capoturno",
+        "Soccorritore",
+    }
+    original_ids = {shift["role"]: shift["id"] for shift in created.json()}
+
+    pending_swap = api.post(
+        "/api/swaps",
+        json={
+            "from_user_id": autisti[0]["id"],
+            "to_user_id": autisti[2]["id"],
+            "shift_id": original_ids["Autista"],
+        },
+    )
+    assert pending_swap.status_code == 200, pending_swap.text
+
+    updated = api.put(
+        "/api/shift-teams",
+        json={
+            "date": day,
+            "shift_type": "Mattina",
+            "user_ids": [autisti[1]["id"], capoturno["id"], soccorritore["id"]],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    updated_by_role = {shift["role"]: shift for shift in updated.json()}
+    assert updated_by_role["Autista"]["user_id"] == autisti[1]["id"]
+    assert updated_by_role["Autista"]["id"] == original_ids["Autista"]
+    assert updated_by_role["Capoturno"]["id"] == original_ids["Capoturno"]
+    assert api.get("/api/swaps", params={"status": "pending"}).json() == []
+
+    incomplete = api.put(
+        "/api/shift-teams",
+        json={
+            "date": day,
+            "shift_type": "Pomeriggio",
+            "user_ids": [autisti[2]["id"], capoturno["id"]],
+        },
+    )
+    assert incomplete.status_code == 422
+
+    deleted = api.delete(
+        "/api/shift-teams",
+        params={"date_str": day, "shift_type": "Mattina"},
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] == 3
+    assert api.get("/api/shifts", params={"date_str": day}).json() == []
+
+
 def test_manual_assignment_respects_night_recovery(api, users):
     autista = by_role(users, "Autista")[0]
     assert create_shift(api, autista, "2030-02-10", "Notte").status_code == 200
@@ -245,6 +312,16 @@ def test_month_generation_has_three_people_and_rest(api, users):
     assert response.status_code == 200, response.text
     assert response.json()["created"] == 31 * 9
     assert response.json()["people_per_shift"] == 3
+    for user in users:
+        notifications = api.get(
+            "/api/notifications",
+            params={"user_id": user["id"]},
+        ).json()
+        assert any(
+            notification["title"] == "Nuovi turni pubblicati"
+            and "marzo 2031" in notification["body"]
+            for notification in notifications
+        )
 
     shifts = api.get("/api/shifts", params={"month": "2031-03"}).json()
     by_day_and_type = defaultdict(list)
@@ -295,6 +372,42 @@ def test_month_generation_has_three_people_and_rest(api, users):
     for shift in april_start:
         if shift["date"] in {"2031-04-01", "2031-04-02"}:
             assert shift["user_id"] not in march_last_night
+
+
+def test_leave_notification_reaches_same_group_and_admin_without_reason(api, users):
+    admin = next(user for user in users if user["is_admin"])
+    requester = by_role(users, "Soccorritore")[0]
+    same_group = by_role(users, "Soccorritore")[1:]
+    outside_group = by_role(users, "Capoturno")[0]
+
+    requester_headers = login_headers(api, requester, "3301")
+    created = api.post(
+        "/api/leaves",
+        json={
+            "user_id": requester["id"],
+            "start_date": "2039-08-10",
+            "end_date": "2039-08-14",
+            "reason": "Motivazione strettamente privata",
+        },
+        headers=requester_headers,
+    )
+    assert created.status_code == 200, created.text
+
+    for recipient in [admin, *same_group]:
+        notifications = api.get(
+            "/api/notifications",
+            params={"user_id": recipient["id"]},
+        ).json()
+        leave_notifications = [item for item in notifications if item["type"] == "leave"]
+        assert leave_notifications
+        assert all("Motivazione" not in item["body"] for item in leave_notifications)
+        assert all("10/08/2039" in item["body"] for item in leave_notifications)
+
+    outside_notifications = api.get(
+        "/api/notifications",
+        params={"user_id": outside_group["id"]},
+    ).json()
+    assert not any(item["type"] == "leave" for item in outside_notifications)
 
 
 def test_failed_overwrite_keeps_existing_month(api, users):

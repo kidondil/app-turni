@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
+import { formatIsoDateIt } from "@/src/utils/dates";
 
 type Leave = {
   id: string;
@@ -142,7 +143,7 @@ export default function LeavesScreen() {
               <View style={styles.cardHeader}>
                 <View style={{ flex: 1 }}>
                   {tab !== "mine" && <Text style={styles.cardUser}>{l.user_name}</Text>}
-                  <Text style={styles.cardDates}>{l.start_date} → {l.end_date}</Text>
+                  <Text style={styles.cardDates}>{formatIsoDateIt(l.start_date)} → {formatIsoDateIt(l.end_date)}</Text>
                 </View>
                 <View style={[styles.statusPill, statusStyle(l.status).box]}>
                   <Text style={[styles.statusText, statusStyle(l.status).text]}>{statusLabel(l.status)}</Text>

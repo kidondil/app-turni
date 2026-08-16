@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors, shiftStyle } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
+import { formatIsoDateIt } from "@/src/utils/dates";
 
 type Shift = { id: string; date: string; shift_type: string; user_id: string; user_name: string; role: string };
 
@@ -90,7 +91,7 @@ export default function SwapNewScreen() {
                   testID={`shift-opt-${s.id}`}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.shiftDate, { color: ss.text }]}>{s.date}</Text>
+                    <Text style={[styles.shiftDate, { color: ss.text }]}>{formatIsoDateIt(s.date)}</Text>
                     <Text style={[styles.shiftType, { color: ss.text }]}>{s.shift_type} · {ss.time}</Text>
                   </View>
                   {sel && <Ionicons name="checkmark-circle" size={22} color={ss.text} />}

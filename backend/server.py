@@ -38,7 +38,7 @@ async def lifespan(_: FastAPI):
     client.close()
 
 
-app = FastAPI(title="LAPS Turni API", version="1.1.0", lifespan=lifespan)
+app = FastAPI(title="LAPS Turni API", version="1.3.1", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 ROLE_AUTISTA = "Autista"
@@ -51,10 +51,25 @@ SHIFT_NOTTE = "Notte"
 
 SHIFT_TYPES = [SHIFT_MATTINA, SHIFT_POMERIGGIO, SHIFT_NOTTE]
 ITALY_TZ = ZoneInfo("Europe/Rome")
-SESSION_DAYS = 30
+SESSION_DAYS = 365
 PIN_HASH_ITERATIONS = 210_000
 PIN_PEPPER = os.getenv("PIN_PEPPER", "")
 PIN_BOOTSTRAP_KEY = os.getenv("PIN_BOOTSTRAP_KEY", "")
+
+MONTH_NAMES_IT = {
+    1: "gennaio",
+    2: "febbraio",
+    3: "marzo",
+    4: "aprile",
+    5: "maggio",
+    6: "giugno",
+    7: "luglio",
+    8: "agosto",
+    9: "settembre",
+    10: "ottobre",
+    11: "novembre",
+    12: "dicembre",
+}
 
 # Italian national holidays (month, day) - fixed dates
 FIXED_HOLIDAYS = {
@@ -102,6 +117,24 @@ class ShiftCreate(BaseModel):
     @classmethod
     def validate_date(cls, value: str) -> str:
         return validate_iso_date(value)
+
+
+class ShiftTeamUpsert(BaseModel):
+    date: str
+    shift_type: Literal["Mattina", "Pomeriggio", "Notte"]
+    user_ids: List[str] = Field(min_length=3, max_length=3)
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, value: str) -> str:
+        return validate_iso_date(value)
+
+    @field_validator("user_ids")
+    @classmethod
+    def validate_unique_members(cls, value: List[str]) -> List[str]:
+        if len(set(value)) != 3:
+            raise ValueError("Seleziona tre persone diverse")
+        return value
 
 
 class SwapRequest(BaseModel):
@@ -394,6 +427,14 @@ def validate_iso_date(value: str) -> str:
     return normalized
 
 
+def format_iso_date_it(value: str) -> str:
+    try:
+        parsed = date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return value
+    return parsed.strftime("%d/%m/%Y")
+
+
 def validate_month_string(value: str) -> str:
     try:
         parsed = datetime.strptime(value, "%Y-%m")
@@ -420,17 +461,38 @@ async def ensure_seed():
     logging.info("Startup OK - setup endpoint available at POST /api/setup")
 
 
-async def create_notification(user_id: str, title: str, body: str, n_type: str):
-    notif = {
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "title": title,
-        "body": body,
-        "type": n_type,
-        "read": False,
-        "created_at": now_iso(),
-    }
-    await db.notifications.insert_one(notif.copy())
+async def create_notifications(
+    user_ids: list[str],
+    title: str,
+    body: str,
+    n_type: str,
+):
+    unique_user_ids = list(dict.fromkeys(user_ids))
+    if not unique_user_ids:
+        return
+    created_at = now_iso()
+    notifications = [
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "title": title,
+            "body": body,
+            "type": n_type,
+            "read": False,
+            "created_at": created_at,
+        }
+        for user_id in unique_user_ids
+    ]
+    await db.notifications.insert_many([item.copy() for item in notifications])
+
+
+async def create_notification(
+    user_id: str,
+    title: str,
+    body: str,
+    n_type: str,
+):
+    await create_notifications([user_id], title, body, n_type)
 
 
 async def ensure_unique_user_name(name: str, exclude_user_id: Optional[str] = None):
@@ -450,27 +512,33 @@ async def validate_shift_assignment(
     shift_type: str,
     user: dict,
     exclude_shift_id: Optional[str] = None,
+    exclude_shift_ids: Optional[List[str]] = None,
 ):
     """Reject assignments that break the one-person-per-group roster rules."""
-    exclude = {"$ne": exclude_shift_id} if exclude_shift_id else None
+    ignored_ids = list(dict.fromkeys([
+        *(exclude_shift_ids or []),
+        *([exclude_shift_id] if exclude_shift_id else []),
+    ]))
+
+    def ignore_current(query: dict):
+        if ignored_ids:
+            query["id"] = {"$nin": ignored_ids}
 
     same_day_query = {"date": date_str, "user_id": user["id"]}
-    if exclude:
-        same_day_query["id"] = exclude
+    ignore_current(same_day_query)
     if await db.shifts.find_one(same_day_query, {"_id": 0}):
-        raise HTTPException(409, f"{user['name']} ha già un turno il {date_str}")
+        raise HTTPException(409, f"{user['name']} ha già un turno il {format_iso_date_it(date_str)}")
 
     occupied_role_query = {
         "date": date_str,
         "shift_type": shift_type,
         "role": user["role"],
     }
-    if exclude:
-        occupied_role_query["id"] = exclude
+    ignore_current(occupied_role_query)
     if await db.shifts.find_one(occupied_role_query, {"_id": 0}):
         raise HTTPException(
             409,
-            f"Il gruppo {user['role']} è già assegnato al turno {shift_type} del {date_str}",
+            f"Il gruppo {user['role']} è già assegnato al turno {shift_type} del {format_iso_date_it(date_str)}",
         )
 
     leave = await db.leaves.find_one(
@@ -483,7 +551,7 @@ async def validate_shift_assignment(
         {"_id": 0},
     )
     if leave:
-        raise HTTPException(409, f"{user['name']} è in ferie il {date_str}")
+        raise HTTPException(409, f"{user['name']} è in ferie il {format_iso_date_it(date_str)}")
 
     assigned_date = date.fromisoformat(date_str)
     previous_dates = [(assigned_date - timedelta(days=days)).isoformat() for days in (1, 2)]
@@ -492,10 +560,9 @@ async def validate_shift_assignment(
         "shift_type": SHIFT_NOTTE,
         "date": {"$in": previous_dates},
     }
-    if exclude:
-        previous_night_query["id"] = exclude
+    ignore_current(previous_night_query)
     if await db.shifts.find_one(previous_night_query, {"_id": 0}):
-        raise HTTPException(409, f"{user['name']} è in smontante/riposo il {date_str}")
+        raise HTTPException(409, f"{user['name']} è in smontante/riposo il {format_iso_date_it(date_str)}")
 
     if shift_type == SHIFT_NOTTE:
         following_dates = [(assigned_date + timedelta(days=days)).isoformat() for days in (1, 2)]
@@ -503,8 +570,7 @@ async def validate_shift_assignment(
             "user_id": user["id"],
             "date": {"$in": following_dates},
         }
-        if exclude:
-            following_shift_query["id"] = exclude
+        ignore_current(following_shift_query)
         if await db.shifts.find_one(following_shift_query, {"_id": 0}):
             raise HTTPException(
                 409,
@@ -803,6 +869,137 @@ async def list_shifts(
     return [Shift(**s) for s in shifts]
 
 
+@api_router.put("/shift-teams", response_model=List[Shift])
+async def upsert_shift_team(
+    payload: ShiftTeamUpsert,
+    _: dict = Depends(require_admin),
+):
+    """Create or update a complete team while preserving existing shift IDs."""
+    users = await db.users.find(
+        {"id": {"$in": payload.user_ids}},
+        {"_id": 0},
+    ).to_list(3)
+    if len(users) != 3:
+        raise HTTPException(404, "Uno o più utenti non sono stati trovati")
+
+    users_by_role = {user["role"]: user for user in users}
+    if set(users_by_role) != VALID_ROLES:
+        raise HTTPException(
+            400,
+            "La squadra deve avere un Autista, un Capoturno e un Soccorritore",
+        )
+
+    current_team = await db.shifts.find(
+        {"date": payload.date, "shift_type": payload.shift_type},
+        {"_id": 0},
+    ).to_list(20)
+    current_ids = [shift["id"] for shift in current_team]
+
+    for user in users:
+        await validate_shift_assignment(
+            date_str=payload.date,
+            shift_type=payload.shift_type,
+            user=user,
+            exclude_shift_ids=current_ids,
+        )
+
+    current_by_role = {}
+    for shift in current_team:
+        current_by_role.setdefault(shift.get("role"), shift)
+
+    kept_ids = []
+    changed_shift_ids = []
+    changed_users = []
+    for role in (ROLE_AUTISTA, ROLE_CAPOTURNO, ROLE_SOCCORRITORE):
+        user = users_by_role[role]
+        current = current_by_role.get(role)
+        if current:
+            kept_ids.append(current["id"])
+            await db.shifts.update_one(
+                {"id": current["id"]},
+                {"$set": {
+                    "date": payload.date,
+                    "shift_type": payload.shift_type,
+                    "user_id": user["id"],
+                    "user_name": user["name"],
+                    "role": user["role"],
+                }},
+            )
+            if current.get("user_id") != user["id"]:
+                changed_shift_ids.append(current["id"])
+                changed_users.append(user["id"])
+        else:
+            shift_id = str(uuid.uuid4())
+            kept_ids.append(shift_id)
+            changed_users.append(user["id"])
+            await db.shifts.insert_one({
+                "id": shift_id,
+                "date": payload.date,
+                "shift_type": payload.shift_type,
+                "user_id": user["id"],
+                "user_name": user["name"],
+                "role": user["role"],
+                "created_at": now_iso(),
+            })
+
+    removed_ids = [shift_id for shift_id in current_ids if shift_id not in kept_ids]
+    if removed_ids:
+        await db.shifts.delete_many({"id": {"$in": removed_ids}})
+    invalidated_swap_ids = list(dict.fromkeys([*removed_ids, *changed_shift_ids]))
+    if invalidated_swap_ids:
+        await db.swaps.delete_many({
+            "shift_id": {"$in": invalidated_swap_ids},
+            "status": "pending",
+        })
+
+    if changed_users:
+        await create_notifications(
+            changed_users,
+            "Turno assegnato",
+            f"Sei stato assegnato al turno {payload.shift_type} del {format_iso_date_it(payload.date)}",
+            "shift",
+        )
+
+    team = await db.shifts.find(
+        {"date": payload.date, "shift_type": payload.shift_type},
+        {"_id": 0},
+    ).to_list(3)
+    role_order = {
+        ROLE_AUTISTA: 0,
+        ROLE_CAPOTURNO: 1,
+        ROLE_SOCCORRITORE: 2,
+    }
+    team.sort(key=lambda shift: role_order.get(shift["role"], 99))
+    return [Shift(**shift) for shift in team]
+
+
+@api_router.delete("/shift-teams")
+async def delete_shift_team(
+    date_str: str,
+    shift_type: Literal["Mattina", "Pomeriggio", "Notte"],
+    _: dict = Depends(require_admin),
+):
+    try:
+        date_str = validate_iso_date(date_str)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    team = await db.shifts.find(
+        {"date": date_str, "shift_type": shift_type},
+        {"_id": 0, "id": 1},
+    ).to_list(20)
+    if not team:
+        raise HTTPException(404, "Squadra non trovata")
+
+    shift_ids = [shift["id"] for shift in team]
+    await db.shifts.delete_many({"id": {"$in": shift_ids}})
+    await db.swaps.delete_many({
+        "shift_id": {"$in": shift_ids},
+        "status": "pending",
+    })
+    return {"ok": True, "deleted": len(shift_ids)}
+
+
 @api_router.post("/shifts", response_model=Shift)
 async def create_shift(payload: ShiftCreate, _: dict = Depends(require_admin)):
     user = await db.users.find_one({"id": payload.user_id}, {"_id": 0})
@@ -826,7 +1023,7 @@ async def create_shift(payload: ShiftCreate, _: dict = Depends(require_admin)):
     await create_notification(
         payload.user_id,
         "Nuovo turno assegnato",
-        f"Sei stato assegnato al turno {payload.shift_type} del {payload.date}",
+        f"Sei stato assegnato al turno {payload.shift_type} del {format_iso_date_it(payload.date)}",
         "shift",
     )
     return Shift(**shift)
@@ -870,7 +1067,7 @@ async def update_shift(
         await create_notification(
             user["id"],
             "Turno aggiornato",
-            f"Sei stato assegnato al turno {payload.shift_type} del {payload.date}",
+            f"Sei stato assegnato al turno {payload.shift_type} del {format_iso_date_it(payload.date)}",
             "shift",
         )
 
@@ -1068,6 +1265,27 @@ async def generate_shifts(req: GenerateRequest, _: dict = Depends(require_admin)
     if created:
         await db.shifts.insert_many([s.copy() for s in created])
 
+    audience = [user["id"] for user in users]
+    month_name = MONTH_NAMES_IT[month]
+    if req.overwrite:
+        notification_title = "Turni aggiornati"
+        notification_body = (
+            f"Sono stati aggiornati i turni di {month_name} {year}. "
+            "Apri il calendario per consultarli."
+        )
+    else:
+        notification_title = "Nuovi turni pubblicati"
+        notification_body = (
+            f"Sono stati pubblicati i turni di {month_name} {year}. "
+            "Apri il calendario per consultarli."
+        )
+    await create_notifications(
+        audience,
+        notification_title,
+        notification_body,
+        "shift",
+    )
+
     return {"created": len(created), "month": month_prefix, "people_per_shift": 3}
 
 
@@ -1133,7 +1351,7 @@ async def create_swap(
     await create_notification(
         payload.to_user_id,
         "Richiesta scambio turno",
-        f"{from_user['name']} ti chiede di scambiare il turno {shift['shift_type']} del {shift['date']}",
+        f"{from_user['name']} ti chiede di scambiare il turno {shift['shift_type']} del {format_iso_date_it(shift['date'])}",
         "swap",
     )
     return SwapRequest(**swap)
@@ -1270,17 +1488,18 @@ async def create_leave(
         "created_at": now_iso(),
     }
     await db.leaves.insert_one(leave.copy())
-    # Notify all members of same role group + admin (so admin always knows)
+    # Notify all members of same role group + admin (so admin always knows).
+    # The reason is deliberately omitted from notifications shown to colleagues.
     same_role = await db.users.find({"role": user["role"], "id": {"$ne": user["id"]}}, {"_id": 0}).to_list(50)
     notified_ids = set()
-    for member in same_role:
-        await create_notification(
-            member["id"],
-            "Richiesta ferie da collega",
-            f"{user['name']} ha richiesto ferie dal {payload.start_date} al {payload.end_date}",
-            "leave",
-        )
-        notified_ids.add(member["id"])
+    same_role_ids = [member["id"] for member in same_role]
+    await create_notifications(
+        same_role_ids,
+        "Richiesta ferie da collega",
+        f"{user['name']} ha richiesto ferie dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
+        "leave",
+    )
+    notified_ids.update(same_role_ids)
     # Also notify admin if not already notified and not the requester
     admins = await db.users.find({"is_admin": True}, {"_id": 0}).to_list(10)
     for adm in admins:
@@ -1289,7 +1508,7 @@ async def create_leave(
         await create_notification(
             adm["id"],
             "Richiesta ferie da approvare",
-            f"{user['name']} ({user['role']}) ha richiesto ferie dal {payload.start_date} al {payload.end_date}",
+            f"{user['name']} ({user['role']}) ha richiesto ferie dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
             "leave",
         )
     return LeaveRequest(**leave)
@@ -1325,7 +1544,7 @@ async def respond_leave(
     await create_notification(
         leave["user_id"],
         f"Ferie {('approvate' if action == 'approve' else 'rifiutate')}",
-        f"La tua richiesta dal {leave['start_date']} al {leave['end_date']} è stata {new_status}",
+        f"La tua richiesta dal {format_iso_date_it(leave['start_date'])} al {format_iso_date_it(leave['end_date'])} è stata {('approvata' if action == 'approve' else 'rifiutata')}",
         "leave",
     )
     return {"ok": True, "status": new_status}

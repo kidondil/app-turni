@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors, shiftStyle } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
+import { formatIsoDateIt } from "@/src/utils/dates";
 
 type Swap = {
   id: string;
@@ -126,7 +127,7 @@ export default function SwapsScreen() {
                         <Text style={[styles.statusText, statusStyle(s.status).text]}>{statusLabel(s.status)}</Text>
                       </View>
                     </View>
-                    <Text style={styles.swapDate}>{s.shift_date}</Text>
+                    <Text style={styles.swapDate}>{formatIsoDateIt(s.shift_date)}</Text>
                     <Text style={styles.swapPeople}>
                       {isIncoming ? `Da: ${s.from_user_name}` : `A: ${s.to_user_name}`}
                     </Text>

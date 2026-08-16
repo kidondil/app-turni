@@ -10,7 +10,21 @@ Ogni turno è composto da tre persone:
 
 I turni sono Mattina (08:00-14:00), Pomeriggio (14:00-20:00) e Notte (20:00-08:00). Dopo la notte vengono rispettati un giorno di smontante e uno di riposo.
 
-Ogni operatore accede con un PIN personale da 4 a 6 cifre. I PIN non vengono salvati in chiaro: il backend conserva soltanto un hash con salt e pepper. Le sessioni durano 30 giorni e cinque PIN errati bloccano temporaneamente nuovi tentativi.
+Ogni operatore accede con un PIN personale da 4 a 6 cifre. I PIN non vengono salvati in chiaro: il backend conserva soltanto un hash con salt e pepper. Il browser ricorda l'accesso sul dispositivo per un anno, salvo disconnessione volontaria o cancellazione dei dati del browser; cinque PIN errati bloccano temporaneamente nuovi tentativi.
+
+L'amministratore può comporre manualmente ogni turno scegliendo insieme un Autista, un Capoturno e un Soccorritore. Dalla pagina del giorno si apre **Modifica squadra** per sostituire un componente; l'eliminazione dell'intera squadra è disponibile all'interno della modifica con una conferma esplicita. Gli scambi approvati restano visibili perché aggiornano direttamente l'assegnazione del turno.
+
+Le date sono mostrate nel formato italiano `GG/MM/AAAA`. Per le ferie si può digitare il periodo oppure aprire il calendario e selezionare direttamente il primo e l'ultimo giorno.
+
+## Notifiche
+
+L'app conserva uno storico interno delle notifiche, consultabile dalla campanella:
+
+- una richiesta ferie avvisa i colleghi dello stesso gruppo professionale e l'amministratore, indicando soltanto nome e date;
+- la generazione o rigenerazione dei turni avvisa tutti gli utenti;
+- la motivazione delle ferie non viene inserita nelle notifiche destinate ai colleghi.
+
+Le notifiche vengono aggiornate quando l'utente apre o ricarica l'app. Non sono notifiche di sistema e non compaiono sul telefono mentre l'app è chiusa.
 
 ## Avvio del backend
 
@@ -28,7 +42,7 @@ Configurare in `backend/.env`:
 - `MONGO_URL` e `DB_NAME` per MongoDB;
 - `CORS_ORIGINS` con gli indirizzi autorizzati del frontend;
 - `PIN_PEPPER` con una stringa casuale lunga, da conservare stabilmente;
-- `PIN_BOOTSTRAP_KEY` con un secondo codice casuale, necessario soltanto per migrare un’installazione già esistente.
+- `PIN_BOOTSTRAP_KEY` con un secondo codice casuale, necessario soltanto per migrare un'installazione già esistente.
 
 Per generare due valori casuali distinti:
 
