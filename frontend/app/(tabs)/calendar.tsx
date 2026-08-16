@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking, Platform } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, shiftStyle, monthNamesIt, weekdaysShortIt, API_URL, SHIFT_TYPES } from "@/src/theme";
+import { colors, shiftStyle, monthNamesIt, weekdaysShortIt, SHIFT_TYPES } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Shift = {
@@ -98,19 +98,23 @@ export default function CalendarScreen() {
   };
 
   const handleExport = async () => {
-    if (!API_URL) {
-      Alert.alert("Errore", "Il collegamento al backend non è configurato");
+    if (Platform.OS !== "web" || typeof document === "undefined") {
+      Alert.alert("Disponibile sul sito", "Per esportare il calendario apri l’app dal browser.");
       return;
     }
-    const url = `${API_URL}/api/export/${monthStr}`;
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.open(url, "_blank");
-    } else {
-      try {
-        await Linking.openURL(url);
-      } catch {
-        Alert.alert("Errore", "Impossibile aprire l'esportazione CSV");
-      }
+    try {
+      const csv = await apiRequest<string>(`/api/export/${monthStr}`);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `turni_${monthStr}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      Alert.alert("Errore", apiErrorMessage(error, "Impossibile esportare il calendario"));
     }
   };
 

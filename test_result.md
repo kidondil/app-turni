@@ -218,8 +218,8 @@
 ##         comment: "Aggiunti login PIN, migrazione dati esistenti, cambio PIN personale e reset PIN da parte dell’admin; lint e TypeScript superati."
 ## metadata:
 ##   created_by: "main_agent"
-##   version: "1.5"
-##   test_sequence: 7
+##   version: "1.5.1"
+##   test_sequence: 8
 ##   run_ui: false
 ## test_plan:
 ##   current_focus:
@@ -238,3 +238,5 @@
 ##     message: "Versione 1.4: frontend verificato con typecheck, lint ed export web. La suite backend comprende ora 15 test e va rilanciata localmente perché questo ambiente non include le dipendenze Python di test."
 ##   - agent: "main"
 ##     message: "Versione 1.5: typecheck, compilazione Python ed export web superati. Aggiunti 2 test backend (17 totali) per Trasporti/importazione; l'ambiente corrente non include FastAPI/pytest, quindi la suite va rilanciata localmente con requirements-dev.txt."
+##   - agent: "main"
+##     message: "Versione 1.5.1: corretto il pulsante Esporta affinché scarichi il CSV con la sessione autenticata. Typecheck, lint ed export web superati."
