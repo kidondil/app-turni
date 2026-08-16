@@ -7,9 +7,9 @@ import { AuthResponse, useUser } from "@/src/context/UserContext";
 import { colors, roleColor } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
 
-type Member = { name: string; role: "Autista" | "Capoturno" | "Soccorritore"; pin: string };
+type Member = { name: string; role: "Autista" | "Capoturno" | "Soccorritore" | "Volontario"; pin: string };
 
-const ROLES: Member["role"][] = ["Autista", "Capoturno", "Soccorritore"];
+const ROLES: Member["role"][] = ["Autista", "Capoturno", "Soccorritore", "Volontario"];
 
 export default function SetupScreen() {
   const router = useRouter();
@@ -98,6 +98,10 @@ export default function SetupScreen() {
             <View style={[styles.summaryCard, { backgroundColor: "#D1FAE5" }]}>
               <Text style={[styles.summaryNum, { color: "#065F46" }]}>{counts.Soccorritore}</Text>
               <Text style={[styles.summaryLabel, { color: "#065F46" }]}>Soccorritori</Text>
+            </View>
+            <View style={[styles.summaryCard, { backgroundColor: "#FEF3C7" }]}>
+              <Text style={[styles.summaryNum, { color: "#92400E" }]}>{counts.Volontario}</Text>
+              <Text style={[styles.summaryLabel, { color: "#92400E" }]}>Volontari</Text>
             </View>
           </View>
 
@@ -194,14 +198,14 @@ const styles = StyleSheet.create({
   logo: { width: 64, height: 64, borderRadius: 20, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", marginBottom: 16 },
   title: { fontSize: 26, fontWeight: "700", color: colors.textPrimary, letterSpacing: -0.5 },
   subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 6, textAlign: "center", paddingHorizontal: 24 },
-  summaryRow: { flexDirection: "row", gap: 8, marginBottom: 20 },
-  summaryCard: { flex: 1, padding: 12, borderRadius: 12, alignItems: "center" },
+  summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },
+  summaryCard: { flexGrow: 1, flexBasis: "46%", padding: 12, borderRadius: 12, alignItems: "center" },
   summaryNum: { fontSize: 20, fontWeight: "700" },
   summaryLabel: { fontSize: 11, fontWeight: "600", marginTop: 2 },
   label: { fontSize: 14, fontWeight: "700", color: colors.textPrimary, marginBottom: 8 },
   input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border, fontSize: 14, color: colors.textPrimary, marginBottom: 10 },
-  roleRow: { flexDirection: "row", gap: 6, marginBottom: 10 },
-  roleBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  roleRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
+  roleBtn: { flexGrow: 1, flexBasis: "46%", paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   roleText: { fontSize: 12, fontWeight: "600", color: colors.textPrimary },
   addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 12, gap: 6 },
   addBtnText: { color: colors.primaryFg, fontWeight: "700", fontSize: 14 },

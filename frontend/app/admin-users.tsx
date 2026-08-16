@@ -7,7 +7,7 @@ import { useUser, User } from "@/src/context/UserContext";
 import { colors, roleColor } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
 
-const ROLES: ("Autista" | "Capoturno" | "Soccorritore")[] = ["Autista", "Capoturno", "Soccorritore"];
+const ROLES: User["role"][] = ["Autista", "Capoturno", "Soccorritore", "Volontario"];
 
 export default function AdminUsersScreen() {
   const { currentUser, users, refreshUsers, refreshStatus, clearUser } = useUser();
@@ -139,7 +139,7 @@ export default function AdminUsersScreen() {
     );
   };
 
-  const grouped: Record<string, User[]> = { Autista: [], Capoturno: [], Soccorritore: [] };
+  const grouped: Record<string, User[]> = { Autista: [], Capoturno: [], Soccorritore: [], Volontario: [] };
   users.forEach((u) => { if (grouped[u.role]) grouped[u.role].push(u); });
 
   return (
@@ -207,7 +207,9 @@ export default function AdminUsersScreen() {
           {/* Users list grouped */}
           {ROLES.map((role) => (
             <View key={role}>
-              <Text style={styles.groupTitle}>{role === "Autista" ? "Autisti" : role === "Capoturno" ? "Capoturno" : "Soccorritori"} ({grouped[role].length})</Text>
+              <Text style={styles.groupTitle}>
+                {role === "Autista" ? "Autisti" : role === "Capoturno" ? "Capoturno" : role === "Soccorritore" ? "Soccorritori" : "Volontari"} ({grouped[role].length})
+              </Text>
               {grouped[role].map((u) => (
                 <View key={u.id} style={styles.userRow}>
                   <View style={[styles.userDot, { backgroundColor: roleColor(u.role) }]} />
@@ -305,8 +307,8 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
   label: { fontSize: 14, fontWeight: "700", color: colors.textPrimary, marginBottom: 8 },
   input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border, fontSize: 14, color: colors.textPrimary, marginBottom: 10 },
-  roleRow: { flexDirection: "row", gap: 6, marginBottom: 10 },
-  roleBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  roleRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
+  roleBtn: { flexGrow: 1, flexBasis: "46%", paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   roleText: { fontSize: 12, fontWeight: "600", color: colors.textPrimary },
   addCard: { padding: 14, backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
   actionRow: { flexDirection: "row", gap: 8 },

@@ -37,13 +37,15 @@ export const shiftStyle = (type: string) => {
 export const roleColor = (role: string) => {
   if (role === "Autista") return "#3B82F6";
   if (role === "Capoturno") return "#8B5CF6";
-  return "#10B981";
+  if (role === "Soccorritore") return "#10B981";
+  return "#F59E0B";
 };
 
 export const roleLabel = (role: string) => {
   if (role === "Autista") return "Autista";
   if (role === "Capoturno") return "Capoturno";
-  return "Soccorritore";
+  if (role === "Soccorritore") return "Soccorritore";
+  return "Volontario";
 };
 
 export const monthNamesIt = [

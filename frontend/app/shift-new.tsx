@@ -15,7 +15,7 @@ import { useUser, User } from "@/src/context/UserContext";
 import { colors, roleColor, shiftStyle, SHIFT_TYPES, ShiftType } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
 
-type Role = User["role"];
+type Role = Exclude<User["role"], "Volontario">;
 type Shift = {
   id: string;
   date: string;

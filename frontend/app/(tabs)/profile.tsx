@@ -193,16 +193,20 @@ export default function ProfileScreen() {
 
         {/* Actions */}
         <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Azioni</Text>
-        <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/leave-new")} testID="action-leave">
-          <Ionicons name="airplane-outline" size={22} color={colors.textPrimary} />
-          <Text style={styles.actionText}>Richiedi ferie/permesso</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/swap-new")} testID="action-swap">
-          <Ionicons name="swap-horizontal-outline" size={22} color={colors.textPrimary} />
-          <Text style={styles.actionText}>Nuovo scambio turno</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-        </TouchableOpacity>
+        {currentUser.role !== "Volontario" && (
+          <>
+            <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/leave-new")} testID="action-leave">
+              <Ionicons name="airplane-outline" size={22} color={colors.textPrimary} />
+              <Text style={styles.actionText}>Richiedi ferie/permesso</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/swap-new")} testID="action-swap">
+              <Ionicons name="swap-horizontal-outline" size={22} color={colors.textPrimary} />
+              <Text style={styles.actionText}>Nuovo scambio turno</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </>
+        )}
         <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/change-pin")} testID="action-change-pin">
           <Ionicons name="keypad-outline" size={22} color={colors.textPrimary} />
           <Text style={styles.actionText}>Cambia PIN personale</Text>

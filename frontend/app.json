@@ -2,7 +2,7 @@
   "expo": {
     "name": "LAPS Turni",
     "slug": "laps-turni",
-    "version": "1.5.1",
+    "version": "1.6.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "laps-turni",
@@ -21,7 +21,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./public/icons/icon-192.png"
     },
     "plugins": [
       "expo-router",

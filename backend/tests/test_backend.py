@@ -351,6 +351,65 @@ def test_transport_team_and_hours(api, users):
     assert "08:00-16:00" in exported.text
 
 
+def test_volunteer_joins_manually_and_is_excluded_from_roster(api, users):
+    volunteer = api.post(
+        "/api/users",
+        json={"name": "Volontario Prova", "role": "Volontario", "pin": "4455"},
+    )
+    assert volunteer.status_code == 200, volunteer.text
+    volunteer = volunteer.json()
+    volunteer_headers = login_headers(api, volunteer, "4455")
+    regular_user = by_role(users, "Autista")[1]
+    regular_headers = login_headers(api, regular_user, "1102")
+
+    assert create_shift(api, volunteer, "2040-01-10", "Mattina").status_code == 400
+    assert api.post(
+        "/api/volunteer-attendances",
+        json={"date": "2040-01-10", "shift_type": "Mattina"},
+        headers=regular_headers,
+    ).status_code == 400
+
+    joined = api.post(
+        "/api/volunteer-attendances",
+        json={"date": "2040-01-10", "shift_type": "Mattina"},
+        headers=volunteer_headers,
+    )
+    assert joined.status_code == 200, joined.text
+    assert joined.json()["user_id"] == volunteer["id"]
+    assert api.post(
+        "/api/volunteer-attendances",
+        json={"date": "2040-01-10", "shift_type": "Mattina"},
+        headers=volunteer_headers,
+    ).status_code == 409
+
+    visible = api.get(
+        "/api/volunteer-attendances",
+        params={"date_str": "2040-01-10"},
+        headers=regular_headers,
+    )
+    assert visible.status_code == 200
+    assert [item["user_name"] for item in visible.json()] == ["Volontario Prova"]
+    assert api.delete(
+        f"/api/volunteer-attendances/{joined.json()['id']}",
+        headers=regular_headers,
+    ).status_code == 403
+    assert api.delete(
+        f"/api/volunteer-attendances/{joined.json()['id']}",
+        headers=volunteer_headers,
+    ).status_code == 200
+
+    generated = api.post(
+        "/api/shifts/generate",
+        json={"year": 2040, "month": 2, "overwrite": False},
+    )
+    assert generated.status_code == 200, generated.text
+    volunteer_shifts = api.get(
+        "/api/shifts",
+        params={"month": "2040-02", "user_id": volunteer["id"]},
+    ).json()
+    assert volunteer_shifts == []
+
+
 def test_month_import_validates_before_writing(api, users):
     autisti = by_role(users, "Autista")
     capoturni = by_role(users, "Capoturno")

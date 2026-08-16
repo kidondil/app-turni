@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors, shiftStyle, roleColor, SHIFT_TYPES } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
+import PwaInstallPrompt from "@/src/components/PwaInstallPrompt";
 
 type Shift = {
   id: string;
@@ -14,6 +15,14 @@ type Shift = {
   user_id: string;
   user_name: string;
   role: string;
+};
+
+type VolunteerAttendance = {
+  id: string;
+  date: string;
+  shift_type: string;
+  user_id: string;
+  user_name: string;
 };
 
 type Notification = {
@@ -41,6 +50,7 @@ export default function HomeScreen() {
   const { currentUser } = useUser();
   const router = useRouter();
   const [todayShifts, setTodayShifts] = useState<Shift[]>([]);
+  const [todayVolunteers, setTodayVolunteers] = useState<VolunteerAttendance[]>([]);
   const [myShifts, setMyShifts] = useState<Shift[]>([]);
   const [upcoming, setUpcoming] = useState<Shift[]>([]);
   const [notifs, setNotifs] = useState<Notification[]>([]);
@@ -53,15 +63,23 @@ export default function HomeScreen() {
   const load = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const [todayData, mineData, notifData] = await Promise.all([
+      const [todayData, mineData, notifData, volunteerTodayData, myVolunteerData] = await Promise.all([
         apiRequest<Shift[]>(`/api/shifts?date_str=${todayStr}`),
         apiRequest<Shift[]>(`/api/shifts?user_id=${currentUser.id}`),
         apiRequest<Notification[]>(`/api/notifications?user_id=${currentUser.id}`),
+        apiRequest<VolunteerAttendance[]>(`/api/volunteer-attendances?date_str=${todayStr}`),
+        apiRequest<VolunteerAttendance[]>(`/api/volunteer-attendances?user_id=${currentUser.id}`),
       ]);
       setTodayShifts(todayData);
-      const mineToday = mineData.filter((s) => s.date === todayStr);
+      setTodayVolunteers(volunteerTodayData);
+      const volunteerAsShifts: Shift[] = myVolunteerData.map((attendance) => ({
+        ...attendance,
+        role: "Volontario",
+      }));
+      const personalEntries = currentUser.role === "Volontario" ? volunteerAsShifts : mineData;
+      const mineToday = personalEntries.filter((s) => s.date === todayStr);
       setMyShifts(mineToday);
-      const future = mineData.filter((s) => s.date > todayStr).slice(0, 5);
+      const future = personalEntries.filter((s) => s.date > todayStr).slice(0, 5);
       setUpcoming(future);
       setNotifs(notifData);
     } catch (e) {
@@ -96,6 +114,10 @@ export default function HomeScreen() {
     SHIFT_TYPES.map((type) => [type, []]),
   );
   todayShifts.forEach((s) => groupedByShift[s.shift_type]?.push(s));
+  const volunteersByShift: Record<string, VolunteerAttendance[]> = Object.fromEntries(
+    SHIFT_TYPES.map((type) => [type, []]),
+  );
+  todayVolunteers.forEach((attendance) => volunteersByShift[attendance.shift_type]?.push(attendance));
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -119,6 +141,8 @@ export default function HomeScreen() {
             )}
           </TouchableOpacity>
         </View>
+
+        <PwaInstallPrompt />
 
         {/* My Today's Shift */}
         <Text style={styles.sectionTitle}>{myShifts.length > 1 ? "I miei turni oggi" : "Il mio turno oggi"}</Text>
@@ -144,7 +168,7 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.emptyCard}>
             <Ionicons name="cafe-outline" size={28} color={colors.textMuted} />
-            <Text style={styles.emptyText}>Riposo oggi</Text>
+            <Text style={styles.emptyText}>{currentUser.role === "Volontario" ? "Nessuna presenza oggi" : "Riposo oggi"}</Text>
           </View>
         )}
 
@@ -159,6 +183,7 @@ export default function HomeScreen() {
         {SHIFT_TYPES.map((type) => {
           const ss = shiftStyle(type);
           const members = groupedByShift[type] || [];
+          const volunteers = volunteersByShift[type] || [];
           return (
             <View key={type} style={[styles.teamCard, { backgroundColor: ss.bg, borderColor: ss.border }]} testID={`team-${type}`}>
               <View style={styles.teamHeader}>
@@ -166,7 +191,7 @@ export default function HomeScreen() {
                 <Text style={[styles.teamTime, { color: ss.text }]}>{ss.time}</Text>
               </View>
               {members.length === 0 ? (
-                <Text style={[styles.teamEmpty, { color: ss.text }]}>Nessuno assegnato</Text>
+                <Text style={[styles.teamEmpty, { color: ss.text }]}>Nessun equipaggio assegnato</Text>
               ) : (
                 members.map((m) => (
                   <View key={m.id} style={styles.teamMember}>
@@ -175,6 +200,18 @@ export default function HomeScreen() {
                     <Text style={[styles.memberRole, { color: ss.text, opacity: 0.7 }]}>{m.role}</Text>
                   </View>
                 ))
+              )}
+              {volunteers.length > 0 && (
+                <View style={styles.volunteerSection}>
+                  <Text style={[styles.volunteerLabel, { color: ss.text }]}>Volontari</Text>
+                  {volunteers.map((volunteer) => (
+                    <View key={volunteer.id} style={styles.teamMember}>
+                      <View style={[styles.memberDot, { backgroundColor: roleColor("Volontario") }]} />
+                      <Text style={[styles.memberName, { color: ss.text }]}>{volunteer.user_name}</Text>
+                      <Text style={[styles.memberRole, { color: ss.text, opacity: 0.7 }]}>Volontario</Text>
+                    </View>
+                  ))}
+                </View>
               )}
             </View>
           );
@@ -250,6 +287,8 @@ const styles = StyleSheet.create({
   memberDot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
   memberName: { fontSize: 14, fontWeight: "500", flex: 1 },
   memberRole: { fontSize: 11, fontWeight: "500" },
+  volunteerSection: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "rgba(0,0,0,0.12)" },
+  volunteerLabel: { fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 2, opacity: 0.8 },
   upcomingCard: {
     flexDirection: "row", alignItems: "center", backgroundColor: colors.surface,
     padding: 12, borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: colors.border,

@@ -38,12 +38,13 @@ async def lifespan(_: FastAPI):
     client.close()
 
 
-app = FastAPI(title="LAPS Turni API", version="1.5.0", lifespan=lifespan)
+app = FastAPI(title="LAPS Turni API", version="1.6.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 ROLE_AUTISTA = "Autista"
 ROLE_CAPOTURNO = "Capoturno"
 ROLE_SOCCORRITORE = "Soccorritore"
+ROLE_VOLONTARIO = "Volontario"
 
 SHIFT_MATTINA = "Mattina"
 SHIFT_POMERIGGIO = "Pomeriggio"
@@ -110,6 +111,26 @@ class Shift(BaseModel):
     user_name: str
     role: str
     created_at: str
+
+
+class VolunteerAttendance(BaseModel):
+    id: str
+    date: str
+    shift_type: str
+    user_id: str
+    user_name: str
+    created_at: str
+
+
+class VolunteerAttendanceCreate(BaseModel):
+    date: str
+    shift_type: Literal["Mattina", "Pomeriggio", "Trasporti", "Notte"]
+    user_id: Optional[str] = None
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, value: str) -> str:
+        return validate_iso_date(value)
 
 
 class ShiftCreate(BaseModel):
@@ -524,6 +545,8 @@ async def validate_shift_assignment(
     exclude_shift_ids: Optional[List[str]] = None,
 ):
     """Reject assignments that break the one-person-per-group roster rules."""
+    if user.get("role") not in OPERATIONAL_ROLES:
+        raise HTTPException(400, "I volontari si aggiungono dal calendario come presenza extra")
     ignored_ids = list(dict.fromkeys([
         *(exclude_shift_ids or []),
         *([exclude_shift_id] if exclude_shift_id else []),
@@ -589,7 +612,8 @@ async def root():
 
 
 # ===== SETUP =====
-VALID_ROLES = {ROLE_AUTISTA, ROLE_CAPOTURNO, ROLE_SOCCORRITORE}
+OPERATIONAL_ROLES = {ROLE_AUTISTA, ROLE_CAPOTURNO, ROLE_SOCCORRITORE}
+VALID_ROLES = {*OPERATIONAL_ROLES, ROLE_VOLONTARIO}
 
 
 @api_router.get("/setup/status")
@@ -754,6 +778,7 @@ async def setup_reset(_: dict = Depends(require_admin)):
     """Wipes ALL data (users, shifts, swaps, leaves, notifications). Irreversibile."""
     await db.users.delete_many({})
     await db.shifts.delete_many({})
+    await db.volunteer_attendances.delete_many({})
     await db.swaps.delete_many({})
     await db.leaves.delete_many({})
     await db.notifications.delete_many({})
@@ -813,10 +838,14 @@ async def update_user(user_id: str, payload: UserUpdate, _: dict = Depends(requi
             future_shifts = await db.shifts.count_documents(
                 {"user_id": user_id, "date": {"$gte": today_italy().isoformat()}}
             )
-            if future_shifts:
+            future_attendances = await db.volunteer_attendances.count_documents(
+                {"user_id": user_id, "date": {"$gte": today_italy().isoformat()}}
+            )
+            future_assignments = future_shifts + future_attendances
+            if future_assignments:
                 raise HTTPException(
                     409,
-                    f"Riassegna prima i {future_shifts} turni futuri dell'utente",
+                    f"Rimuovi prima le {future_assignments} presenze future dell'utente",
                 )
         updates["role"] = payload.role
     if updates:
@@ -824,6 +853,7 @@ async def update_user(user_id: str, payload: UserUpdate, _: dict = Depends(requi
         # Propagate name/role to denormalized fields
         if "name" in updates:
             await db.shifts.update_many({"user_id": user_id}, {"$set": {"user_name": updates["name"]}})
+            await db.volunteer_attendances.update_many({"user_id": user_id}, {"$set": {"user_name": updates["name"]}})
             await db.swaps.update_many({"from_user_id": user_id}, {"$set": {"from_user_name": updates["name"]}})
             await db.swaps.update_many({"to_user_id": user_id}, {"$set": {"to_user_name": updates["name"]}})
             await db.leaves.update_many({"user_id": user_id}, {"$set": {"user_name": updates["name"]}})
@@ -842,11 +872,106 @@ async def delete_user(user_id: str, _: dict = Depends(require_admin)):
     today = today_italy().isoformat()
     await db.users.delete_one({"id": user_id})
     await db.shifts.delete_many({"user_id": user_id, "date": {"$gte": today}})
+    await db.volunteer_attendances.delete_many({"user_id": user_id, "date": {"$gte": today}})
     await db.swaps.delete_many({"$or": [{"from_user_id": user_id}, {"to_user_id": user_id}], "status": "pending"})
     await db.leaves.delete_many({"user_id": user_id, "status": "pending"})
     await db.notifications.delete_many({"user_id": user_id})
     await db.sessions.delete_many({"user_id": user_id})
     await db.login_attempts.delete_many({"user_id": user_id})
+    return {"ok": True}
+
+
+# ===== VOLUNTEER ATTENDANCES =====
+@api_router.get("/volunteer-attendances", response_model=List[VolunteerAttendance])
+async def list_volunteer_attendances(
+    month: Optional[str] = None,
+    user_id: Optional[str] = None,
+    date_str: Optional[str] = None,
+    _: dict = Depends(get_current_user),
+):
+    query = {}
+    if month:
+        month = validate_month_string(month)
+        query["date"] = {"$regex": f"^{month}"}
+    if user_id:
+        query["user_id"] = user_id
+    if date_str:
+        try:
+            query["date"] = validate_iso_date(date_str)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    attendances = await db.volunteer_attendances.find(query, {"_id": 0}).sort("date", 1).to_list(5000)
+    return [VolunteerAttendance(**attendance) for attendance in attendances]
+
+
+@api_router.post("/volunteer-attendances", response_model=VolunteerAttendance)
+async def create_volunteer_attendance(
+    payload: VolunteerAttendanceCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    target_user_id = payload.user_id or current_user["id"]
+    if target_user_id != current_user["id"] and not current_user.get("is_admin"):
+        raise HTTPException(403, "Puoi aggiungere soltanto la tua presenza")
+    if payload.date < today_italy().isoformat():
+        raise HTTPException(400, "Non puoi aggiungerti a un turno già trascorso")
+
+    volunteer = await db.users.find_one({"id": target_user_id}, {"_id": 0})
+    if not volunteer:
+        raise HTTPException(404, "Volontario non trovato")
+    if volunteer.get("role") != ROLE_VOLONTARIO:
+        raise HTTPException(400, "Solo un profilo Volontario può usare questa funzione")
+
+    duplicate = await db.volunteer_attendances.find_one(
+        {
+            "date": payload.date,
+            "shift_type": payload.shift_type,
+            "user_id": target_user_id,
+        },
+        {"_id": 0},
+    )
+    if duplicate:
+        raise HTTPException(409, "Il volontario è già presente in questo turno")
+
+    attendance = {
+        "id": str(uuid.uuid4()),
+        "date": payload.date,
+        "shift_type": payload.shift_type,
+        "user_id": target_user_id,
+        "user_name": volunteer["name"],
+        "created_at": now_iso(),
+    }
+    await db.volunteer_attendances.insert_one(attendance.copy())
+    if current_user["id"] != target_user_id:
+        await create_notification(
+            target_user_id,
+            "Presenza volontaria aggiunta",
+            f"Sei stato aggiunto al turno {payload.shift_type} del {format_iso_date_it(payload.date)}",
+            "shift",
+        )
+    return VolunteerAttendance(**attendance)
+
+
+@api_router.delete("/volunteer-attendances/{attendance_id}")
+async def delete_volunteer_attendance(
+    attendance_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    attendance = await db.volunteer_attendances.find_one({"id": attendance_id}, {"_id": 0})
+    if not attendance:
+        raise HTTPException(404, "Presenza volontaria non trovata")
+    if attendance["user_id"] != current_user["id"] and not current_user.get("is_admin"):
+        raise HTTPException(403, "Puoi rimuovere soltanto la tua presenza")
+    if attendance["date"] < today_italy().isoformat() and not current_user.get("is_admin"):
+        raise HTTPException(409, "Non puoi rimuovere una presenza già trascorsa")
+
+    await db.volunteer_attendances.delete_one({"id": attendance_id})
+    if current_user["id"] != attendance["user_id"]:
+        await create_notification(
+            attendance["user_id"],
+            "Presenza volontaria rimossa",
+            f"La tua presenza nel turno {attendance['shift_type']} del {format_iso_date_it(attendance['date'])} è stata rimossa",
+            "shift",
+        )
     return {"ok": True}
 
 
@@ -887,7 +1012,7 @@ async def upsert_shift_team(
         raise HTTPException(404, "Uno o più utenti non sono stati trovati")
 
     users_by_role = {user["role"]: user for user in users}
-    if set(users_by_role) != VALID_ROLES:
+    if set(users_by_role) != OPERATIONAL_ROLES:
         raise HTTPException(
             400,
             "La squadra deve avere un Autista, un Capoturno e un Soccorritore",
@@ -1037,7 +1162,7 @@ async def import_shift_teams(
     for team in payload.teams:
         selected = [users_by_id[user_id] for user_id in team.user_ids]
         selected_by_role = {user["role"]: user for user in selected}
-        if set(selected_by_role) != VALID_ROLES:
+        if set(selected_by_role) != OPERATIONAL_ROLES:
             raise HTTPException(
                 400,
                 f"La squadra {team.shift_type} del {format_iso_date_it(team.date)} deve avere "
@@ -1693,6 +1818,8 @@ async def create_leave(
     user = await db.users.find_one({"id": payload.user_id}, {"_id": 0})
     if not user:
         raise HTTPException(404, "Utente non trovato")
+    if user.get("role") == ROLE_VOLONTARIO:
+        raise HTTPException(400, "I volontari non rientrano nella pianificazione delle ferie")
     if payload.start_date < today_italy().isoformat():
         raise HTTPException(400, "Non puoi richiedere ferie per un periodo già trascorso")
     overlapping = await db.leaves.find_one(
@@ -1909,6 +2036,10 @@ async def export_csv(month: str, _: dict = Depends(get_current_user)):
     """month: YYYY-MM"""
     month = validate_month_string(month)
     shifts = await db.shifts.find({"date": {"$regex": f"^{month}"}}, {"_id": 0}).sort("date", 1).to_list(5000)
+    volunteer_attendances = await db.volunteer_attendances.find(
+        {"date": {"$regex": f"^{month}"}},
+        {"_id": 0},
+    ).sort("date", 1).to_list(5000)
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
     writer.writerow(["Data", "Turno", "Orario", "Ruolo", "Nome"])
@@ -1920,6 +2051,14 @@ async def export_csv(month: str, _: dict = Depends(get_current_user)):
     }
     for s in shifts:
         writer.writerow([s["date"], s["shift_type"], times.get(s["shift_type"], ""), s["role"], s["user_name"]])
+    for attendance in volunteer_attendances:
+        writer.writerow([
+            attendance["date"],
+            attendance["shift_type"],
+            times.get(attendance["shift_type"], ""),
+            ROLE_VOLONTARIO,
+            attendance["user_name"],
+        ])
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
@@ -1962,6 +2101,7 @@ async def delete_month(month: str, _: dict = Depends(require_admin)):
     ).to_list(5000)
     shift_ids = [shift["id"] for shift in shifts]
     result = await db.shifts.delete_many({"date": {"$regex": f"^{month}"}})
+    await db.volunteer_attendances.delete_many({"date": {"$regex": f"^{month}"}})
     if shift_ids:
         await db.swaps.delete_many({"shift_id": {"$in": shift_ids}, "status": "pending"})
     return {"deleted": result.deleted_count}

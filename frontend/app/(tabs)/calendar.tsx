@@ -17,6 +17,7 @@ type Shift = {
 };
 
 type Holiday = { date: string; name: string };
+type VolunteerAttendance = { id: string; date: string; shift_type: string; user_id: string; user_name: string };
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -27,6 +28,7 @@ export default function CalendarScreen() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth()); // 0-11
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [volunteerAttendances, setVolunteerAttendances] = useState<VolunteerAttendance[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"all" | "mine">("all");
@@ -36,12 +38,14 @@ export default function CalendarScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [shiftData, holidayData] = await Promise.all([
+      const [shiftData, holidayData, volunteerData] = await Promise.all([
         apiRequest<Shift[]>(`/api/shifts?month=${monthStr}`),
         apiRequest<Holiday[]>(`/api/holidays?year=${year}`),
+        apiRequest<VolunteerAttendance[]>(`/api/volunteer-attendances?month=${monthStr}`),
       ]);
       setShifts(shiftData);
       setHolidays(holidayData);
+      setVolunteerAttendances(volunteerData);
     } catch (e) {
       Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare il calendario"));
     } finally {
@@ -94,6 +98,9 @@ export default function CalendarScreen() {
     const mine = new Set(
       list.filter((shift) => shift.user_id === currentUser.id).map((shift) => shift.shift_type),
     );
+    volunteerAttendances
+      .filter((attendance) => attendance.date === dateStr && attendance.user_id === currentUser.id)
+      .forEach((attendance) => mine.add(attendance.shift_type));
     return SHIFT_TYPES.filter((type) => mine.has(type));
   };
 

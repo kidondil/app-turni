@@ -14,6 +14,10 @@ Ogni operatore accede con un PIN personale da 4 a 6 cifre. I PIN non vengono sal
 
 L'amministratore può comporre manualmente ogni turno scegliendo insieme un Autista, un Capoturno e un Soccorritore. Dalla pagina del giorno si apre **Modifica squadra** per sostituire un componente; l'eliminazione dell'intera squadra è disponibile all'interno della modifica con una conferma esplicita. Gli scambi approvati restano visibili perché aggiornano direttamente l'assegnazione del turno.
 
+## Volontari
+
+L'amministratore può creare anche profili con ruolo **Volontario** e PIN personale. I volontari sono sempre esclusi dalla generazione automatica, dalla copertura minima delle squadre, dalle ferie, dagli scambi e dalle statistiche degli operatori. Dal dettaglio di una giornata possono usare **Aggiungimi a questo turno** o **Ritirati dal turno** per Mattina, Pomeriggio, Trasporti e Notte, anche su più fasce. La loro presenza compare in una sezione distinta sotto l'equipaggio ordinario. L'amministratore può aggiungerli e rimuoverli manualmente dalla stessa schermata.
+
 Dal Profilo, l'amministratore può inoltre aprire **Importa turni del mese** e caricare un CSV con le colonne `Data;Turno;Autista;Capoturno;Soccorritore`. L'app controlla nomi, gruppi, duplicati, ferie e smontanti, mostra l'anteprima giorno per giorno e richiede una conferma. La modalità normale aggiorna soltanto le squadre presenti nel file; l'opzione **Sostituisci tutto il mese** elimina prima i turni del mese selezionato, senza toccare utenti o ferie.
 
 Le date sono mostrate nel formato italiano `GG/MM/AAAA`. Per le ferie si può digitare il periodo oppure aprire il calendario e selezionare direttamente il primo e l'ultimo giorno. Ogni operatore può annullare una propria richiesta di ferie ancora attiva, anche se già approvata, purché il periodo non sia concluso. Può inoltre annullare uno scambio inviato finché è ancora in attesa; le richieste restano nello storico con lo stato **Annullata** o **Annullato**.
@@ -27,6 +31,10 @@ L'app conserva uno storico interno delle notifiche, consultabile dalla campanell
 - la motivazione delle ferie non viene inserita nelle notifiche destinate ai colleghi.
 
 Le notifiche vengono aggiornate quando l'utente apre o ricarica l'app. Non sono notifiche di sistema e non compaiono sul telefono mentre l'app è chiusa.
+
+## Installazione PWA
+
+Il frontend web è una Progressive Web App installabile senza Play Store o App Store. Su Android, quando il browser rende disponibile l'installazione, nella Home compare **Installa LAPS Turni**. Su iPhone compare una guida con i passaggi Safari → Condividi → Aggiungi alla schermata Home. Dopo l'installazione l'app ha una propria icona e si apre a schermo intero. Gli aggiornamenti arrivano insieme ai normali deploy del frontend; i dati dei turni continuano a essere richiesti al backend e non vengono conservati offline dal service worker.
 
 ## Avvio del backend
 

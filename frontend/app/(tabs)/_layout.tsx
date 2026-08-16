@@ -2,6 +2,7 @@ import React from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/src/theme";
+import { useUser } from "@/src/context/UserContext";
 
 type IconProps = { color: string; size: number };
 const HomeIcon = ({ color, size }: IconProps) => <Ionicons name="home" size={size} color={color} />;
@@ -11,6 +12,9 @@ const LeavesIcon = ({ color, size }: IconProps) => <Ionicons name="airplane" siz
 const PersonIcon = ({ color, size }: IconProps) => <Ionicons name="person" size={size} color={color} />;
 
 export default function TabsLayout() {
+  const { currentUser } = useUser();
+  const isVolunteer = currentUser?.role === "Volontario";
+
   return (
     <Tabs
       screenOptions={{
@@ -47,6 +51,7 @@ export default function TabsLayout() {
         options={{
           title: "Scambi",
           tabBarIcon: SwapIcon,
+          href: isVolunteer ? null : undefined,
         }}
       />
       <Tabs.Screen
@@ -54,6 +59,7 @@ export default function TabsLayout() {
         options={{
           title: "Ferie",
           tabBarIcon: LeavesIcon,
+          href: isVolunteer ? null : undefined,
         }}
       />
       <Tabs.Screen

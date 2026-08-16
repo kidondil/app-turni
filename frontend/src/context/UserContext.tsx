@@ -12,7 +12,7 @@ import {
 export type User = {
   id: string;
   name: string;
-  role: "Autista" | "Capoturno" | "Soccorritore";
+  role: "Autista" | "Capoturno" | "Soccorritore" | "Volontario";
   is_admin: boolean;
 };
 
