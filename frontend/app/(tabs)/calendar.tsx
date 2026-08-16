@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, shiftStyle, monthNamesIt, weekdaysShortIt, API_URL } from "@/src/theme";
+import { colors, shiftStyle, monthNamesIt, weekdaysShortIt, API_URL, SHIFT_TYPES } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Shift = {
@@ -88,13 +88,13 @@ export default function CalendarScreen() {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const myShiftType = (dateStr: string) => {
+  const myShiftTypes = (dateStr: string) => {
     const list = shiftsByDate[dateStr] || [];
-    if (currentUser) {
-      const mine = list.find((s) => s.user_id === currentUser.id);
-      if (mine) return mine.shift_type;
-    }
-    return null;
+    if (!currentUser) return [];
+    const mine = new Set(
+      list.filter((shift) => shift.user_id === currentUser.id).map((shift) => shift.shift_type),
+    );
+    return SHIFT_TYPES.filter((type) => mine.has(type));
   };
 
   const handleExport = async () => {
@@ -167,9 +167,8 @@ export default function CalendarScreen() {
               const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
               const isToday = dateStr === `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
               const isHoliday = holidaySet.has(dateStr);
-              const shiftType = myShiftType(dateStr);
+              const mineTypes = myShiftTypes(dateStr);
               const dayShifts = shiftsByDate[dateStr] || [];
-              const ss = shiftType ? shiftStyle(shiftType) : null;
 
               return (
                 <TouchableOpacity
@@ -184,13 +183,21 @@ export default function CalendarScreen() {
                 >
                   <Text style={[styles.dayNumber, isHoliday && { color: colors.danger }]}>{day}</Text>
                   {viewMode === "mine" ? (
-                    ss && <View style={[styles.shiftPill, { backgroundColor: ss.bg, borderColor: ss.border }]}>
-                      <Text style={[styles.shiftPillText, { color: ss.text }]}>{shiftType?.[0]}</Text>
+                    <View style={styles.pillsRow}>
+                      {mineTypes.map((type) => {
+                        const palette = shiftStyle(type);
+                        return (
+                          <View key={type} style={[styles.shiftPill, { backgroundColor: palette.bg, borderColor: palette.border }]}>
+                            <Text style={[styles.shiftPillText, { color: palette.text }]}>{type[0]}</Text>
+                          </View>
+                        );
+                      })}
                     </View>
                   ) : (
                     <View style={styles.dotsRow}>
                       {dayShifts.some((s) => s.shift_type === "Mattina") && <View style={[styles.dot, { backgroundColor: "#FBBF24" }]} />}
                       {dayShifts.some((s) => s.shift_type === "Pomeriggio") && <View style={[styles.dot, { backgroundColor: "#F97316" }]} />}
+                      {dayShifts.some((s) => s.shift_type === "Trasporti") && <View style={[styles.dot, { backgroundColor: "#3B82F6" }]} />}
                       {dayShifts.some((s) => s.shift_type === "Notte") && <View style={[styles.dot, { backgroundColor: "#111827" }]} />}
                     </View>
                   )}
@@ -211,8 +218,12 @@ export default function CalendarScreen() {
               <Text style={styles.legendText}>Pomeriggio 14-20</Text>
             </View>
             <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: "#3B82F6" }]} />
+              <Text style={styles.legendText}>Trasporti 08-16</Text>
+            </View>
+            <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: "#111827" }]} />
-              <Text style={styles.legendText}>Notte/Trasporti 20-08</Text>
+              <Text style={styles.legendText}>Notte 20-08</Text>
             </View>
             <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: colors.danger }]} />
@@ -254,8 +265,9 @@ const styles = StyleSheet.create({
   dayNumber: { fontSize: 14, fontWeight: "600", color: colors.textPrimary, marginTop: 4 },
   dotsRow: { flexDirection: "row", gap: 3, marginTop: 4 },
   dot: { width: 5, height: 5, borderRadius: 2.5 },
-  shiftPill: { marginTop: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
-  shiftPillText: { fontSize: 10, fontWeight: "700" },
+  pillsRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 2, marginTop: 3 },
+  shiftPill: { minWidth: 15, paddingHorizontal: 3, paddingVertical: 1, borderRadius: 5, borderWidth: 1, alignItems: "center" },
+  shiftPillText: { fontSize: 9, fontWeight: "700" },
   legend: { marginTop: 20, padding: 16, backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, marginHorizontal: 8 },
   legendTitle: { fontSize: 14, fontWeight: "700", color: colors.textPrimary, marginBottom: 8 },
   legendRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4 },

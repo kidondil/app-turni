@@ -38,7 +38,7 @@ async def lifespan(_: FastAPI):
     client.close()
 
 
-app = FastAPI(title="LAPS Turni API", version="1.4.0", lifespan=lifespan)
+app = FastAPI(title="LAPS Turni API", version="1.5.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 ROLE_AUTISTA = "Autista"
@@ -47,9 +47,13 @@ ROLE_SOCCORRITORE = "Soccorritore"
 
 SHIFT_MATTINA = "Mattina"
 SHIFT_POMERIGGIO = "Pomeriggio"
+SHIFT_TRASPORTI = "Trasporti"
 SHIFT_NOTTE = "Notte"
 
-SHIFT_TYPES = [SHIFT_MATTINA, SHIFT_POMERIGGIO, SHIFT_NOTTE]
+SHIFT_TYPES = [SHIFT_MATTINA, SHIFT_POMERIGGIO, SHIFT_TRASPORTI, SHIFT_NOTTE]
+# Il generatore automatico storico continua a creare i tre turni di presidio.
+# Trasporti viene gestito manualmente o tramite l'importazione mensile.
+GENERATED_SHIFT_TYPES = [SHIFT_MATTINA, SHIFT_POMERIGGIO, SHIFT_NOTTE]
 ITALY_TZ = ZoneInfo("Europe/Rome")
 SESSION_DAYS = 365
 PIN_HASH_ITERATIONS = 210_000
@@ -101,7 +105,7 @@ class User(BaseModel):
 class Shift(BaseModel):
     id: str
     date: str  # YYYY-MM-DD
-    shift_type: str  # Mattina/Pomeriggio/Notte
+    shift_type: str  # Mattina/Pomeriggio/Trasporti/Notte
     user_id: str
     user_name: str
     role: str
@@ -110,7 +114,7 @@ class Shift(BaseModel):
 
 class ShiftCreate(BaseModel):
     date: str
-    shift_type: Literal["Mattina", "Pomeriggio", "Notte"]
+    shift_type: Literal["Mattina", "Pomeriggio", "Trasporti", "Notte"]
     user_id: str
 
     @field_validator("date")
@@ -121,7 +125,7 @@ class ShiftCreate(BaseModel):
 
 class ShiftTeamUpsert(BaseModel):
     date: str
-    shift_type: Literal["Mattina", "Pomeriggio", "Notte"]
+    shift_type: Literal["Mattina", "Pomeriggio", "Trasporti", "Notte"]
     user_ids: List[str] = Field(min_length=3, max_length=3)
 
     @field_validator("date")
@@ -135,6 +139,11 @@ class ShiftTeamUpsert(BaseModel):
         if len(set(value)) != 3:
             raise ValueError("Seleziona tre persone diverse")
         return value
+
+
+class ShiftImportRequest(BaseModel):
+    teams: List[ShiftTeamUpsert] = Field(min_length=1, max_length=500)
+    replace_month: bool = False
 
 
 class SwapRequest(BaseModel):
@@ -549,7 +558,7 @@ async def validate_shift_assignment(
         raise HTTPException(409, f"{user['name']} è in ferie il {format_iso_date_it(date_str)}")
 
     assigned_date = date.fromisoformat(date_str)
-    previous_dates = [(assigned_date - timedelta(days=days)).isoformat() for days in (1, 2)]
+    previous_dates = [(assigned_date - timedelta(days=1)).isoformat()]
     previous_night_query = {
         "user_id": user["id"],
         "shift_type": SHIFT_NOTTE,
@@ -560,7 +569,7 @@ async def validate_shift_assignment(
         raise HTTPException(409, f"{user['name']} è in smontante/riposo il {format_iso_date_it(date_str)}")
 
     if shift_type == SHIFT_NOTTE:
-        following_dates = [(assigned_date + timedelta(days=days)).isoformat() for days in (1, 2)]
+        following_dates = [(assigned_date + timedelta(days=1)).isoformat()]
         following_shift_query = {
             "user_id": user["id"],
             "date": {"$in": following_dates},
@@ -569,7 +578,7 @@ async def validate_shift_assignment(
         if await db.shifts.find_one(following_shift_query, {"_id": 0}):
             raise HTTPException(
                 409,
-                f"{user['name']} ha già un turno nei due giorni successivi alla notte",
+                f"{user['name']} ha già un turno nel giorno successivo alla notte",
             )
 
 
@@ -971,7 +980,7 @@ async def upsert_shift_team(
 @api_router.delete("/shift-teams")
 async def delete_shift_team(
     date_str: str,
-    shift_type: Literal["Mattina", "Pomeriggio", "Notte"],
+    shift_type: Literal["Mattina", "Pomeriggio", "Trasporti", "Notte"],
     _: dict = Depends(require_admin),
 ):
     try:
@@ -993,6 +1002,211 @@ async def delete_shift_team(
         "status": "pending",
     })
     return {"ok": True, "deleted": len(shift_ids)}
+
+
+@api_router.post("/shifts/import")
+async def import_shift_teams(
+    payload: ShiftImportRequest,
+    _: dict = Depends(require_admin),
+):
+    """Validate a monthly roster completely, then update or replace its teams."""
+    team_keys = [(team.date, team.shift_type) for team in payload.teams]
+    if len(set(team_keys)) != len(team_keys):
+        raise HTTPException(400, "Il file contiene due righe per la stessa data e lo stesso turno")
+
+    months = {team.date[:7] for team in payload.teams}
+    if len(months) != 1:
+        raise HTTPException(400, "Ogni importazione deve contenere un solo mese")
+    month_prefix = next(iter(months))
+    year, month = (int(part) for part in month_prefix.split("-"))
+
+    referenced_user_ids = list(dict.fromkeys(
+        user_id
+        for team in payload.teams
+        for user_id in team.user_ids
+    ))
+    users = await db.users.find(
+        {"id": {"$in": referenced_user_ids}},
+        {"_id": 0},
+    ).to_list(500)
+    users_by_id = {user["id"]: user for user in users}
+    if len(users_by_id) != len(referenced_user_ids):
+        raise HTTPException(404, "Uno o più utenti del file non sono stati trovati")
+
+    prepared_teams = []
+    for team in payload.teams:
+        selected = [users_by_id[user_id] for user_id in team.user_ids]
+        selected_by_role = {user["role"]: user for user in selected}
+        if set(selected_by_role) != VALID_ROLES:
+            raise HTTPException(
+                400,
+                f"La squadra {team.shift_type} del {format_iso_date_it(team.date)} deve avere "
+                "un Autista, un Capoturno e un Soccorritore",
+            )
+        prepared_teams.append((team, selected_by_role))
+
+    # Build the schedule that would exist after the import. Validation happens
+    # before the first write, so a roster with an error never changes the calendar.
+    existing_shifts = await db.shifts.find({}, {"_id": 0}).to_list(100000)
+    imported_keys = set(team_keys)
+    if payload.replace_month:
+        retained_shifts = [
+            shift for shift in existing_shifts
+            if not shift.get("date", "").startswith(month_prefix)
+        ]
+    else:
+        retained_shifts = [
+            shift for shift in existing_shifts
+            if (shift.get("date"), shift.get("shift_type")) not in imported_keys
+        ]
+
+    imported_assignments = []
+    for team, selected_by_role in prepared_teams:
+        for role in (ROLE_AUTISTA, ROLE_CAPOTURNO, ROLE_SOCCORRITORE):
+            user = selected_by_role[role]
+            imported_assignments.append({
+                "date": team.date,
+                "shift_type": team.shift_type,
+                "user_id": user["id"],
+                "user_name": user["name"],
+                "role": user["role"],
+            })
+
+    approved_leaves = await db.leaves.find(
+        {"status": "approved", "user_id": {"$in": referenced_user_ids}},
+        {"_id": 0},
+    ).to_list(5000)
+    validation_errors = []
+    for assignment in imported_assignments:
+        leave = next((
+            item for item in approved_leaves
+            if item["user_id"] == assignment["user_id"]
+            and item["start_date"] <= assignment["date"] <= item["end_date"]
+        ), None)
+        if leave:
+            validation_errors.append(
+                f"{assignment['user_name']} è in ferie il {format_iso_date_it(assignment['date'])}"
+            )
+
+    planned_shifts = [*retained_shifts, *imported_assignments]
+    dates_by_user = defaultdict(set)
+    nights_by_user = defaultdict(set)
+    for shift in planned_shifts:
+        user_id = shift.get("user_id")
+        shift_date = shift.get("date")
+        if not user_id or not shift_date:
+            continue
+        dates_by_user[user_id].add(shift_date)
+        if shift.get("shift_type") == SHIFT_NOTTE:
+            nights_by_user[user_id].add(shift_date)
+
+    for assignment in imported_assignments:
+        assigned_date = date.fromisoformat(assignment["date"])
+        user_id = assignment["user_id"]
+        previous_nights = {(assigned_date - timedelta(days=1)).isoformat()}
+        if nights_by_user[user_id].intersection(previous_nights):
+            validation_errors.append(
+                f"{assignment['user_name']} è in smontante/riposo il "
+                f"{format_iso_date_it(assignment['date'])}"
+            )
+        if assignment["shift_type"] == SHIFT_NOTTE:
+            following_dates = {(assigned_date + timedelta(days=1)).isoformat()}
+            if dates_by_user[user_id].intersection(following_dates):
+                validation_errors.append(
+                    f"{assignment['user_name']} ha un turno nel giorno successivo alla notte "
+                    f"del {format_iso_date_it(assignment['date'])}"
+                )
+
+    validation_errors = list(dict.fromkeys(validation_errors))
+    if validation_errors:
+        preview = "; ".join(validation_errors[:8])
+        remaining = len(validation_errors) - 8
+        if remaining > 0:
+            preview += f"; e altri {remaining} errori"
+        raise HTTPException(409, f"Importazione non eseguita: {preview}")
+
+    invalidated_shift_ids = []
+    if payload.replace_month:
+        replaced = [
+            shift for shift in existing_shifts
+            if shift.get("date", "").startswith(month_prefix)
+        ]
+        invalidated_shift_ids.extend(
+            shift["id"] for shift in replaced if shift.get("id")
+        )
+        await db.shifts.delete_many({"date": {"$regex": f"^{month_prefix}"}})
+
+    for team, selected_by_role in prepared_teams:
+        current_team = []
+        if not payload.replace_month:
+            current_team = await db.shifts.find(
+                {"date": team.date, "shift_type": team.shift_type},
+                {"_id": 0},
+            ).to_list(20)
+        current_by_role = {}
+        for shift in current_team:
+            current_by_role.setdefault(shift.get("role"), shift)
+
+        kept_ids = []
+        for role in (ROLE_AUTISTA, ROLE_CAPOTURNO, ROLE_SOCCORRITORE):
+            user = selected_by_role[role]
+            current = current_by_role.get(role)
+            if current:
+                kept_ids.append(current["id"])
+                if current.get("user_id") != user["id"]:
+                    invalidated_shift_ids.append(current["id"])
+                await db.shifts.update_one(
+                    {"id": current["id"]},
+                    {"$set": {
+                        "date": team.date,
+                        "shift_type": team.shift_type,
+                        "user_id": user["id"],
+                        "user_name": user["name"],
+                        "role": user["role"],
+                    }},
+                )
+            else:
+                shift_id = str(uuid.uuid4())
+                kept_ids.append(shift_id)
+                await db.shifts.insert_one({
+                    "id": shift_id,
+                    "date": team.date,
+                    "shift_type": team.shift_type,
+                    "user_id": user["id"],
+                    "user_name": user["name"],
+                    "role": user["role"],
+                    "created_at": now_iso(),
+                })
+
+        removed_ids = [
+            shift["id"] for shift in current_team
+            if shift.get("id") and shift["id"] not in kept_ids
+        ]
+        if removed_ids:
+            invalidated_shift_ids.extend(removed_ids)
+            await db.shifts.delete_many({"id": {"$in": removed_ids}})
+
+    invalidated_shift_ids = list(dict.fromkeys(invalidated_shift_ids))
+    if invalidated_shift_ids:
+        await db.swaps.delete_many({
+            "shift_id": {"$in": invalidated_shift_ids},
+            "status": "pending",
+        })
+
+    all_users = await db.users.find({}, {"_id": 0, "id": 1}).to_list(500)
+    month_name = MONTH_NAMES_IT[month]
+    await create_notifications(
+        [user["id"] for user in all_users],
+        "Turni aggiornati",
+        f"Sono stati pubblicati i turni di {month_name} {year}. Apri il calendario per consultarli.",
+        "shift",
+    )
+    return {
+        "month": month_prefix,
+        "teams": len(payload.teams),
+        "assignments": len(imported_assignments),
+        "replaced": payload.replace_month,
+    }
 
 
 @api_router.post("/shifts", response_model=Shift)
@@ -1108,7 +1322,7 @@ async def generate_shifts(req: GenerateRequest, _: dict = Depends(require_admin)
         if len(pool) < 5:
             raise HTTPException(
                 409,
-                f"Servono almeno 5 membri nel gruppo {role} per rispettare notte, smontante e riposo",
+                f"Servono almeno 5 membri nel gruppo {role} per rispettare notte e smontante",
             )
 
     # Target-month shifts are excluded from fairness calculations when overwriting.
@@ -1151,17 +1365,14 @@ async def generate_shifts(req: GenerateRequest, _: dict = Depends(require_admin)
     busy_today = defaultdict(set)
     rest_until = defaultdict(str)
 
-    # Carry smontante/riposo into the new month from nights in the previous two days.
+    # Carry the smontante day into the new month from a night on the previous day.
     first_day = date(year, month, 1)
-    previous_month_dates = {
-        (first_day - timedelta(days=1)).isoformat(),
-        (first_day - timedelta(days=2)).isoformat(),
-    }
+    previous_month_dates = {(first_day - timedelta(days=1)).isoformat()}
     for shift in historical_shifts:
         if shift.get("shift_type") != SHIFT_NOTTE or shift.get("date") not in previous_month_dates:
             continue
         night_date = date.fromisoformat(shift["date"])
-        rest_end = (night_date + timedelta(days=2)).isoformat()
+        rest_end = (night_date + timedelta(days=1)).isoformat()
         rest_until[shift["user_id"]] = max(rest_until[shift["user_id"]], rest_end)
 
     def is_resting(uid: str, d: date) -> bool:
@@ -1209,7 +1420,7 @@ async def generate_shifts(req: GenerateRequest, _: dict = Depends(require_admin)
         d_str = d.isoformat()
         holiday_name = is_holiday(d)
 
-        for shift_type in SHIFT_TYPES:
+        for shift_type in GENERATED_SHIFT_TYPES:
             assignments = []
             a = pick_user(autisti, d, shift_type, holiday_name)
             assignments.append((a, shift_type))
@@ -1223,9 +1434,9 @@ async def generate_shifts(req: GenerateRequest, _: dict = Depends(require_admin)
             assignments.append((s, shift_type))
             busy_today[d_str].add(s["id"])
 
-            # If Notte: next 2 days are Smontante + Riposo
+            # If Notte: the next day is Smontante.
             if shift_type == SHIFT_NOTTE:
-                rest_end = (d + timedelta(days=2)).isoformat()
+                rest_end = (d + timedelta(days=1)).isoformat()
                 for user, _ in assignments:
                     rest_until[user["id"]] = rest_end
 
@@ -1658,14 +1869,24 @@ async def user_stats(
         query["date"] = {"$regex": f"^{year:04d}"}
     shifts = await db.shifts.find(query, {"_id": 0}).to_list(5000)
 
-    by_type = {SHIFT_MATTINA: 0, SHIFT_POMERIGGIO: 0, SHIFT_NOTTE: 0}
+    by_type = {
+        SHIFT_MATTINA: 0,
+        SHIFT_POMERIGGIO: 0,
+        SHIFT_TRASPORTI: 0,
+        SHIFT_NOTTE: 0,
+    }
     holidays_worked = []
     total_hours = 0
     for s in shifts:
         if s["shift_type"] in by_type:
             by_type[s["shift_type"]] += 1
-        # Hours: Mattina/Pomeriggio = 6h, Notte = 12h
-        total_hours += 12 if s["shift_type"] == SHIFT_NOTTE else 6
+        hours_by_type = {
+            SHIFT_MATTINA: 6,
+            SHIFT_POMERIGGIO: 6,
+            SHIFT_TRASPORTI: 8,
+            SHIFT_NOTTE: 12,
+        }
+        total_hours += hours_by_type.get(s["shift_type"], 0)
         try:
             d = date.fromisoformat(s["date"])
             h = is_holiday(d)
@@ -1691,7 +1912,12 @@ async def export_csv(month: str, _: dict = Depends(get_current_user)):
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
     writer.writerow(["Data", "Turno", "Orario", "Ruolo", "Nome"])
-    times = {SHIFT_MATTINA: "08:00-14:00", SHIFT_POMERIGGIO: "14:00-20:00", SHIFT_NOTTE: "20:00-08:00"}
+    times = {
+        SHIFT_MATTINA: "08:00-14:00",
+        SHIFT_POMERIGGIO: "14:00-20:00",
+        SHIFT_TRASPORTI: "08:00-16:00",
+        SHIFT_NOTTE: "20:00-08:00",
+    }
     for s in shifts:
         writer.writerow([s["date"], s["shift_type"], times.get(s["shift_type"], ""), s["role"], s["user_name"]])
     output.seek(0)

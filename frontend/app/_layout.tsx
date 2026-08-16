@@ -18,6 +18,7 @@ export default function RootLayout() {
           <Stack.Screen name="change-pin" />
           <Stack.Screen name="admin-users" />
           <Stack.Screen name="generate-shifts" />
+          <Stack.Screen name="import-shifts" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="day/[date]" options={{ presentation: "card" }} />
         </Stack>

@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, shiftStyle, roleColor } from "@/src/theme";
+import { colors, shiftStyle, roleColor, SHIFT_TYPES } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
 import { formatIsoDateIt } from "@/src/utils/dates";
 
@@ -69,7 +69,9 @@ export default function DayDetailScreen() {
     return <SafeAreaView style={styles.loading}><ActivityIndicator color={colors.primary} size="large" /></SafeAreaView>;
   }
 
-  const grouped: Record<string, Shift[]> = { Mattina: [], Pomeriggio: [], Notte: [] };
+  const grouped: Record<string, Shift[]> = Object.fromEntries(
+    SHIFT_TYPES.map((type) => [type, []]),
+  );
   shifts.forEach((s) => grouped[s.shift_type]?.push(s));
 
   return (
@@ -92,7 +94,7 @@ export default function DayDetailScreen() {
       )}
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {(["Mattina", "Pomeriggio", "Notte"] as const).map((type) => {
+        {SHIFT_TYPES.map((type) => {
           const ss = shiftStyle(type);
           const members = grouped[type];
           return (

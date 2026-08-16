@@ -1,0 +1,32 @@
+IMPORTAZIONE TURNI — AGOSTO 2026
+
+File da caricare:
+  turni_agosto_2026.csv
+
+Procedura:
+1. Pubblicare prima la versione 1.5.0 dell'app.
+2. Aprire Profilo > Importa turni del mese.
+3. Selezionare turni_agosto_2026.csv.
+4. Controllare l'anteprima.
+5. Per caricare il foglio ufficiale completo, attivare "Sostituisci tutto il mese".
+6. Premere "Conferma importazione".
+
+Conversione usata:
+- MP = una squadra Mattina + la stessa squadra Pomeriggio;
+- T/N = una squadra Trasporti + la stessa squadra Notte;
+- T = Trasporti 08:00-16:00;
+- N = Notte 20:00-08:00;
+- S e R non generano una squadra di lavoro;
+- FERIE non genera una squadra di lavoro;
+- la colonna di Cagnin Giorgia è stata ignorata completamente, come richiesto.
+
+Conferma sul 15/08/2026:
+Il servizio Trasporti non era attivo. Nel CSV è quindi presente la squadra
+Notte del 15 agosto, ma correttamente non è presente una squadra Trasporti.
+
+Totali del file:
+- 31 squadre Mattina;
+- 31 squadre Pomeriggio;
+- 30 squadre Trasporti;
+- 31 squadre Notte;
+- 123 squadre, 369 assegnazioni complessive.

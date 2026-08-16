@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, shiftStyle, roleColor } from "@/src/theme";
+import { colors, shiftStyle, roleColor, SHIFT_TYPES } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Shift = {
@@ -92,7 +92,9 @@ export default function HomeScreen() {
     );
   }
 
-  const groupedByShift: Record<string, Shift[]> = { Mattina: [], Pomeriggio: [], Notte: [] };
+  const groupedByShift: Record<string, Shift[]> = Object.fromEntries(
+    SHIFT_TYPES.map((type) => [type, []]),
+  );
   todayShifts.forEach((s) => groupedByShift[s.shift_type]?.push(s));
 
   return (
@@ -154,7 +156,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {(["Mattina", "Pomeriggio", "Notte"] as const).map((type) => {
+        {SHIFT_TYPES.map((type) => {
           const ss = shiftStyle(type);
           const members = groupedByShift[type] || [];
           return (

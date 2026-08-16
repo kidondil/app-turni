@@ -10,7 +10,7 @@ import { formatIsoDateIt, todayIsoLocal } from "@/src/utils/dates";
 
 type Stats = {
   total_shifts: number;
-  by_type: { Mattina: number; Pomeriggio: number; Notte: number };
+  by_type: { Mattina: number; Pomeriggio: number; Trasporti: number; Notte: number };
   total_hours: number;
   holidays_worked: { date: string; name: string; shift: string }[];
 };
@@ -164,6 +164,10 @@ export default function ProfileScreen() {
             <Text style={[styles.miniNumber, { color: "#9A3412" }]}>{stats?.by_type.Pomeriggio || 0}</Text>
             <Text style={[styles.miniLabel, { color: "#9A3412" }]}>Pomeriggi</Text>
           </View>
+          <View style={[styles.miniStat, { backgroundColor: "#DBEAFE" }]}>
+            <Text style={[styles.miniNumber, { color: "#1E3A8A" }]}>{stats?.by_type.Trasporti || 0}</Text>
+            <Text style={[styles.miniLabel, { color: "#1E3A8A" }]}>Trasporti</Text>
+          </View>
           <View style={[styles.miniStat, { backgroundColor: "#1F2937" }]}>
             <Text style={[styles.miniNumber, { color: "#FFF" }]}>{stats?.by_type.Notte || 0}</Text>
             <Text style={[styles.miniLabel, { color: "#FFF" }]}>Notti</Text>
@@ -218,6 +222,16 @@ export default function ProfileScreen() {
               <Text style={[styles.actionText, { color: colors.primaryFg, fontWeight: "700" }]}>
                 Genera o rigenera turni
               </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={() => router.push("/import-shifts")}
+              testID="import-shifts-btn"
+            >
+              <Ionicons name="cloud-upload-outline" size={22} color={colors.textPrimary} />
+              <Text style={styles.actionText}>Importa turni del mese</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity

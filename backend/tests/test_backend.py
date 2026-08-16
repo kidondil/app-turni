@@ -324,8 +324,67 @@ def test_manual_assignment_respects_night_recovery(api, users):
     assert create_shift(api, autista, "2030-02-10", "Notte").status_code == 200
     assert create_shift(api, autista, "2030-02-10", "Mattina").status_code == 200
     assert create_shift(api, autista, "2030-02-11", "Mattina").status_code == 409
-    assert create_shift(api, autista, "2030-02-12", "Pomeriggio").status_code == 409
-    assert create_shift(api, autista, "2030-02-13", "Mattina").status_code == 200
+    assert create_shift(api, autista, "2030-02-12", "Pomeriggio").status_code == 200
+
+
+def test_transport_team_and_hours(api, users):
+    team = [
+        by_role(users, "Autista")[0],
+        by_role(users, "Capoturno")[0],
+        by_role(users, "Soccorritore")[0],
+    ]
+    created = api.put(
+        "/api/shift-teams",
+        json={
+            "date": "2030-04-03",
+            "shift_type": "Trasporti",
+            "user_ids": [user["id"] for user in team],
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert {shift["shift_type"] for shift in created.json()} == {"Trasporti"}
+
+    stats = api.get(f"/api/stats/{team[0]['id']}?year=2030").json()
+    assert stats["by_type"]["Trasporti"] == 1
+    assert stats["total_hours"] == 8
+    exported = api.get("/api/export/2030-04")
+    assert "08:00-16:00" in exported.text
+
+
+def test_month_import_validates_before_writing(api, users):
+    autisti = by_role(users, "Autista")
+    capoturni = by_role(users, "Capoturno")
+    soccorritori = by_role(users, "Soccorritore")
+
+    first_team = [autisti[0]["id"], capoturni[0]["id"], soccorritori[0]["id"]]
+    second_team = [autisti[1]["id"], capoturni[1]["id"], soccorritori[1]["id"]]
+    imported = api.post(
+        "/api/shifts/import",
+        json={
+            "replace_month": True,
+            "teams": [
+                {"date": "2032-08-01", "shift_type": "Mattina", "user_ids": first_team},
+                {"date": "2032-08-01", "shift_type": "Pomeriggio", "user_ids": first_team},
+                {"date": "2032-08-01", "shift_type": "Trasporti", "user_ids": second_team},
+                {"date": "2032-08-01", "shift_type": "Notte", "user_ids": second_team},
+            ],
+        },
+    )
+    assert imported.status_code == 200, imported.text
+    assert imported.json()["teams"] == 4
+    assert imported.json()["assignments"] == 12
+
+    invalid = api.post(
+        "/api/shifts/import",
+        json={
+            "replace_month": False,
+            "teams": [
+                {"date": "2032-08-02", "shift_type": "Mattina", "user_ids": second_team},
+            ],
+        },
+    )
+    assert invalid.status_code == 409
+    assert api.get("/api/shifts", params={"date_str": "2032-08-02"}).json() == []
 
 
 def test_month_generation_has_three_people_and_rest(api, users):
@@ -371,7 +430,7 @@ def test_month_generation_has_three_people_and_rest(api, users):
     for user_id, night_days in nights.items():
         for night_day in night_days:
             night_date = date.fromisoformat(night_day)
-            for offset in (1, 2):
+            for offset in (1,):
                 recovery_day = (night_date + timedelta(days=offset)).isoformat()
                 if recovery_day.startswith("2031-03"):
                     assert recovery_day not in worked[user_id]
@@ -394,7 +453,7 @@ def test_month_generation_has_three_people_and_rest(api, users):
     assert april.status_code == 200
     april_start = api.get("/api/shifts", params={"month": "2031-04"}).json()
     for shift in april_start:
-        if shift["date"] in {"2031-04-01", "2031-04-02"}:
+        if shift["date"] == "2031-04-01":
             assert shift["user_id"] not in march_last_night
 
 

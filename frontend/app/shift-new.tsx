@@ -12,11 +12,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser, User } from "@/src/context/UserContext";
-import { colors, roleColor, shiftStyle } from "@/src/theme";
+import { colors, roleColor, shiftStyle, SHIFT_TYPES, ShiftType } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Role = User["role"];
-type ShiftType = "Mattina" | "Pomeriggio" | "Notte";
 type Shift = {
   id: string;
   date: string;
@@ -27,7 +26,6 @@ type Shift = {
 };
 
 const ROLES: Role[] = ["Autista", "Capoturno", "Soccorritore"];
-const SHIFT_TYPES: ShiftType[] = ["Mattina", "Pomeriggio", "Notte"];
 const EMPTY_TEAM: Record<Role, string | null> = {
   Autista: null,
   Capoturno: null,

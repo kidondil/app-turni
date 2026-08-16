@@ -16,7 +16,7 @@
 # 
 ## user_problem_statement: {problem_statement}
 ## backend:
-##   - task: "Più turni nello stesso giorno e annullamenti"
+##   - task: "Trasporti e importazione mensile"
 ##     implemented: true
 ##     working: "NA"
 ##     file: "backend/server.py"
@@ -26,7 +26,7 @@
 ##     status_history:
 ##       - working: "NA"
 ##         agent: "main"
-##         comment: "Consentite più fasce manuali nello stesso giorno, compresa Mattina+Notte; aggiunti annullamento ferie proprie attive e scambi propri ancora pendenti, con storico e notifiche. Test isolati aggiornati a 15 casi; da eseguire nell'ambiente locale con le dipendenze backend."
+##         comment: "Aggiunto Trasporti 08:00-16:00 e importazione CSV mensile con validazione preventiva, anteprima e modalità aggiorna/sostituisci. Test isolati aggiornati a 17 casi; da eseguire nell'ambiente locale con le dipendenze backend."
 ##   - task: "Task name"
 ##     implemented: true
 ##     working: true  # or false or "NA"
@@ -40,7 +40,7 @@
 ##         -comment: "Detailed comment about status"
 ##
 ## frontend:
-##   - task: "Visualizzazione turni multipli e pulsanti di annullamento"
+##   - task: "Visualizzazione Trasporti e importazione CSV"
 ##     implemented: true
 ##     working: true
 ##     file: "frontend/app/(tabs)/home.tsx"
@@ -50,7 +50,7 @@
 ##     status_history:
 ##       - working: true
 ##         agent: "main"
-##         comment: "Home aggiornata per mostrare tutte le fasce odierne; annullamento ferie disponibile in Ferie e Profilo, annullamento scambio nelle richieste inviate. TypeScript, lint ed export web statico superati."
+##         comment: "Trasporti è visibile in home, giorno, calendario, modifica squadra e statistiche; l'admin può caricare un CSV con anteprima. TypeScript ed export web statico superati."
 ##   - task: "Task name"
 ##     implemented: true
 ##     working: true  # or false or "NA"
@@ -218,12 +218,12 @@
 ##         comment: "Aggiunti login PIN, migrazione dati esistenti, cambio PIN personale e reset PIN da parte dell’admin; lint e TypeScript superati."
 ## metadata:
 ##   created_by: "main_agent"
-##   version: "1.4"
-##   test_sequence: 6
+##   version: "1.5"
+##   test_sequence: 7
 ##   run_ui: false
 ## test_plan:
 ##   current_focus:
-##     - "Più turni nello stesso giorno e annullamenti"
+##     - "Trasporti e importazione mensile"
 ##   stuck_tasks: []
 ##   test_all: true
 ##   test_priority: "high_first"
@@ -236,3 +236,5 @@
 ##     message: "Suite PIN/autorizzazioni integrata: 12 test backend superati; lint e TypeScript senza errori."
 ##   - agent: "main"
 ##     message: "Versione 1.4: frontend verificato con typecheck, lint ed export web. La suite backend comprende ora 15 test e va rilanciata localmente perché questo ambiente non include le dipendenze Python di test."
+##   - agent: "main"
+##     message: "Versione 1.5: typecheck, compilazione Python ed export web superati. Aggiunti 2 test backend (17 totali) per Trasporti/importazione; l'ambiente corrente non include FastAPI/pytest, quindi la suite va rilanciata localmente con requirements-dev.txt."

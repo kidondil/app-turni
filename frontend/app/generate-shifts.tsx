@@ -116,7 +116,7 @@ export default function GenerateShiftsScreen() {
           </View>
           <View style={styles.infoRow}>
             <Ionicons name="moon" size={20} color={colors.textPrimary} />
-            <Text style={styles.infoText}>Dopo la notte: smontante e riposo</Text>
+            <Text style={styles.infoText}>Il giorno dopo la notte è smontante</Text>
           </View>
           <View style={styles.infoRow}>
             <Ionicons name="scale" size={20} color={colors.textPrimary} />
