@@ -1,22 +1,25 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser, User } from "@/src/context/UserContext";
-import { colors, roleColor, API_URL } from "@/src/theme";
+import { colors, roleColor } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 const ROLES: ("Autista" | "Capoturno" | "Soccorritore")[] = ["Autista", "Capoturno", "Soccorritore"];
 
 export default function AdminUsersScreen() {
-  const { currentUser, users, refreshUsers, clearUser } = useUser();
+  const { currentUser, users, refreshUsers, refreshStatus, clearUser } = useUser();
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newPin, setNewPin] = useState("");
   const [newRole, setNewRole] = useState<typeof ROLES[number]>("Autista");
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editName, setEditName] = useState("");
   const [editRole, setEditRole] = useState<typeof ROLES[number]>("Autista");
+  const [editPin, setEditPin] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -34,21 +37,23 @@ export default function AdminUsersScreen() {
       Alert.alert("Errore", "Inserisci un nome");
       return;
     }
+    if (!/^\d{4,6}$/.test(newPin)) {
+      Alert.alert("PIN non valido", "Inserisci da 4 a 6 cifre");
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/users`, {
+      await apiRequest("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), role: newRole }),
+        body: JSON.stringify({ name: newName.trim(), role: newRole, pin: newPin }),
       });
-      if (res.ok) {
-        await refreshUsers();
-        setNewName("");
-        setAdding(false);
-      } else {
-        const err = await res.json();
-        Alert.alert("Errore", err.detail || "Creazione fallita");
-      }
+      await refreshUsers();
+      setNewName("");
+      setNewPin("");
+      setAdding(false);
+    } catch (error) {
+      Alert.alert("Errore", apiErrorMessage(error, "Creazione fallita"));
     } finally {
       setSubmitting(false);
     }
@@ -58,25 +63,34 @@ export default function AdminUsersScreen() {
     setEditingUser(u);
     setEditName(u.name);
     setEditRole(u.role as typeof ROLES[number]);
+    setEditPin("");
   };
 
   const handleEdit = async () => {
     if (!editingUser) return;
     if (!editName.trim()) { Alert.alert("Errore", "Nome vuoto"); return; }
+    if (editPin && !/^\d{4,6}$/.test(editPin)) {
+      Alert.alert("PIN non valido", "Il nuovo PIN deve contenere da 4 a 6 cifre");
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/users/${editingUser.id}`, {
+      await apiRequest(`/api/users/${editingUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: editName.trim(), role: editRole }),
       });
-      if (res.ok) {
-        await refreshUsers();
-        setEditingUser(null);
-      } else {
-        const err = await res.json();
-        Alert.alert("Errore", err.detail || "Modifica fallita");
+      if (editPin) {
+        await apiRequest(`/api/auth/users/${editingUser.id}/reset-pin`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ new_pin: editPin }),
+        });
       }
+      await refreshUsers();
+      setEditingUser(null);
+    } catch (error) {
+      Alert.alert("Errore", apiErrorMessage(error, "Modifica fallita"));
     } finally {
       setSubmitting(false);
     }
@@ -91,12 +105,11 @@ export default function AdminUsersScreen() {
         {
           text: "Elimina", style: "destructive",
           onPress: async () => {
-            const res = await fetch(`${API_URL}/api/users/${u.id}`, { method: "DELETE" });
-            if (res.ok) {
+            try {
+              await apiRequest(`/api/users/${u.id}`, { method: "DELETE" });
               await refreshUsers();
-            } else {
-              const err = await res.json();
-              Alert.alert("Errore", err.detail || "Eliminazione fallita");
+            } catch (error) {
+              Alert.alert("Errore", apiErrorMessage(error, "Eliminazione fallita"));
             }
           },
         },
@@ -113,9 +126,13 @@ export default function AdminUsersScreen() {
         {
           text: "Conferma reset", style: "destructive",
           onPress: async () => {
-            await fetch(`${API_URL}/api/setup/reset`, { method: "POST" });
-            await clearUser();
-            router.replace("/setup");
+            try {
+              await apiRequest("/api/setup/reset", { method: "POST" });
+              await Promise.all([clearUser(), refreshStatus()]);
+              router.replace("/setup");
+            } catch (error) {
+              Alert.alert("Errore", apiErrorMessage(error, "Reset non riuscito"));
+            }
           },
         },
       ]
@@ -149,6 +166,17 @@ export default function AdminUsersScreen() {
                 onChangeText={setNewName}
                 testID="new-user-name"
               />
+              <TextInput
+                style={styles.input}
+                placeholder="PIN personale (4–6 cifre)"
+                placeholderTextColor={colors.textMuted}
+                value={newPin}
+                onChangeText={(value) => setNewPin(value.replace(/\D/g, "").slice(0, 6))}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={6}
+                testID="new-user-pin"
+              />
               <View style={styles.roleRow}>
                 {ROLES.map((r) => (
                   <TouchableOpacity
@@ -161,7 +189,7 @@ export default function AdminUsersScreen() {
                 ))}
               </View>
               <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setAdding(false); setNewName(""); }}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setAdding(false); setNewName(""); setNewPin(""); }}>
                   <Text style={styles.cancelText}>Annulla</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.confirmBtn} onPress={handleAdd} disabled={submitting} testID="confirm-add">
@@ -237,6 +265,22 @@ export default function AdminUsersScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+              {editingUser?.id !== currentUser.id && (
+                <>
+                  <Text style={styles.pinHelp}>Nuovo PIN (lascia vuoto per non cambiarlo)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={editPin}
+                    onChangeText={(value) => setEditPin(value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="Nuovo PIN"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    maxLength={6}
+                    testID="edit-pin-input"
+                  />
+                </>
+              )}
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingUser(null)}>
                   <Text style={styles.cancelText}>Annulla</Text>
@@ -286,4 +330,5 @@ const styles = StyleSheet.create({
   modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
   modalCard: { backgroundColor: colors.background, padding: 20, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   modalTitle: { fontSize: 18, fontWeight: "700", color: colors.textPrimary, marginBottom: 16 },
+  pinHelp: { fontSize: 11, color: colors.textSecondary, marginBottom: 7 },
 });

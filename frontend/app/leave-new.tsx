@@ -4,7 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, API_URL } from "@/src/theme";
+import { colors } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 export default function LeaveNewScreen() {
   const { currentUser } = useUser();
@@ -14,7 +15,19 @@ export default function LeaveNewScreen() {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const validateDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const formatDateInput = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8);
+    if (digits.length <= 4) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+  };
+
+  const validateDate = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split("-").map(Number);
+    const parsed = new Date(year, month - 1, day);
+    return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+  };
 
   const submit = async () => {
     if (!currentUser) return;
@@ -28,7 +41,7 @@ export default function LeaveNewScreen() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/leaves`, {
+      await apiRequest("/api/leaves", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -38,15 +51,11 @@ export default function LeaveNewScreen() {
           reason,
         }),
       });
-      if (res.ok) {
-        Alert.alert("Richiesta inviata", "L'amministratore riceverà la tua richiesta", [
-          { text: "OK", onPress: () => router.back() },
-        ]);
-      } else {
-        Alert.alert("Errore", "Invio fallito");
-      }
+      Alert.alert("Richiesta inviata", "L'amministratore riceverà la tua richiesta", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
     } catch (e) {
-      Alert.alert("Errore", "Invio fallito");
+      Alert.alert("Errore", apiErrorMessage(e, "Invio fallito"));
     } finally {
       setSubmitting(false);
     }
@@ -72,7 +81,9 @@ export default function LeaveNewScreen() {
             placeholder="AAAA-MM-GG"
             placeholderTextColor={colors.textMuted}
             value={startDate}
-            onChangeText={setStartDate}
+            onChangeText={(value) => setStartDate(formatDateInput(value))}
+            keyboardType="number-pad"
+            maxLength={10}
             testID="start-date-input"
           />
 
@@ -82,7 +93,9 @@ export default function LeaveNewScreen() {
             placeholder="AAAA-MM-GG"
             placeholderTextColor={colors.textMuted}
             value={endDate}
-            onChangeText={setEndDate}
+            onChangeText={(value) => setEndDate(formatDateInput(value))}
+            keyboardType="number-pad"
+            maxLength={10}
             testID="end-date-input"
           />
 

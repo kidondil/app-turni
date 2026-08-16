@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from "react-native";
+import React, { useState, useCallback } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, shiftStyle, roleColor, API_URL } from "@/src/theme";
+import { colors, shiftStyle, roleColor } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Shift = {
   id: string;
@@ -52,14 +53,11 @@ export default function HomeScreen() {
   const load = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const [todayRes, mineRes, notifRes] = await Promise.all([
-        fetch(`${API_URL}/api/shifts?date_str=${todayStr}`),
-        fetch(`${API_URL}/api/shifts?user_id=${currentUser.id}`),
-        fetch(`${API_URL}/api/notifications?user_id=${currentUser.id}`),
+      const [todayData, mineData, notifData] = await Promise.all([
+        apiRequest<Shift[]>(`/api/shifts?date_str=${todayStr}`),
+        apiRequest<Shift[]>(`/api/shifts?user_id=${currentUser.id}`),
+        apiRequest<Notification[]>(`/api/notifications?user_id=${currentUser.id}`),
       ]);
-      const todayData = await todayRes.json();
-      const mineData: Shift[] = await mineRes.json();
-      const notifData = await notifRes.json();
       setTodayShifts(todayData);
       const mineToday = mineData.find((s) => s.date === todayStr);
       setMyShift(mineToday || null);
@@ -67,20 +65,20 @@ export default function HomeScreen() {
       setUpcoming(future);
       setNotifs(notifData);
     } catch (e) {
-      console.error(e);
+      Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare i turni"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [currentUser, todayStr]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!currentUser) {
       router.replace("/");
       return;
     }
     load();
-  }, [currentUser, load, router]);
+  }, [currentUser, load, router]));
 
   const unreadCount = notifs.filter((n) => !n.read).length;
 

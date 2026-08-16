@@ -4,7 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, shiftStyle, roleColor, API_URL } from "@/src/theme";
+import { colors, shiftStyle, roleColor } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 export default function ShiftNewScreen() {
   const { currentUser, users } = useUser();
@@ -38,31 +39,18 @@ export default function ShiftNewScreen() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch(
-  isEdit ? `${API_URL}/api/shifts/${params.shift_id}` : `${API_URL}/api/shifts`,
-  {
-    method: isEdit ? "PUT" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      date,
-      shift_type: shiftType,
-      user_id: selectedUser,
-    }),
-  }
-);
-
-if (res.ok) {
-  Alert.alert(
-    "Successo",
-    isEdit ? "Turno modificato" : "Turno creato",
-    [{ text: "OK", onPress: () => router.back() }]
-  );
-} else {
-        const err = await res.json();
-        Alert.alert("Errore", err.detail || "Operazione fallita");
-      }
+      await apiRequest(isEdit ? `/api/shifts/${params.shift_id}` : "/api/shifts", {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, shift_type: shiftType, user_id: selectedUser }),
+      });
+      Alert.alert(
+        "Successo",
+        isEdit ? "Turno modificato" : "Turno creato",
+        [{ text: "OK", onPress: () => router.back() }]
+      );
     } catch (e) {
-      Alert.alert("Errore", "Operazione fallita");
+      Alert.alert("Errore", apiErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
@@ -74,9 +62,7 @@ if (res.ok) {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="close" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>
-  {isEdit ? "Modifica turno" : "Nuovo turno"}
-</Text>
+        <Text style={styles.title}>{isEdit ? "Modifica turno" : "Nuovo turno"}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -135,12 +121,8 @@ if (res.ok) {
           testID="submit-shift"
         >
           <Text style={styles.submitText}>
-  {submitting
-    ? "Salvataggio..."
-    : isEdit
-    ? "Salva modifiche"
-    : "Crea turno"}
-</Text>
+            {submitting ? "Salvataggio..." : isEdit ? "Salva modifiche" : "Crea turno"}
+          </Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />

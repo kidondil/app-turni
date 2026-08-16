@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, shiftStyle, API_URL } from "@/src/theme";
+import { colors, shiftStyle } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Swap = {
   id: string;
@@ -31,34 +32,31 @@ export default function SwapsScreen() {
   const load = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`${API_URL}/api/swaps?user_id=${currentUser.id}`);
-      const data = await res.json();
+      const data = await apiRequest<Swap[]>(`/api/swaps?user_id=${currentUser.id}`);
       setSwaps(data);
     } catch (e) {
-      console.error(e);
+      Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare gli scambi"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [currentUser]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!currentUser) {
       router.replace("/");
       return;
     }
     load();
-  }, [load, currentUser, router]);
+  }, [load, currentUser, router]));
 
   const respondSwap = async (id: string, action: "accept" | "reject") => {
     try {
-      const res = await fetch(`${API_URL}/api/swaps/${id}?action=${action}`, { method: "PATCH" });
-      if (res.ok) {
-        Alert.alert("Successo", `Scambio ${action === "accept" ? "accettato" : "rifiutato"}`);
-        load();
-      }
+      await apiRequest(`/api/swaps/${id}?action=${action}`, { method: "PATCH" });
+      Alert.alert("Successo", `Scambio ${action === "accept" ? "accettato" : "rifiutato"}`);
+      load();
     } catch (e) {
-      Alert.alert("Errore", "Impossibile aggiornare lo scambio");
+      Alert.alert("Errore", apiErrorMessage(e, "Impossibile aggiornare lo scambio"));
     }
   };
 
@@ -132,7 +130,7 @@ export default function SwapsScreen() {
                     <Text style={styles.swapPeople}>
                       {isIncoming ? `Da: ${s.from_user_name}` : `A: ${s.to_user_name}`}
                     </Text>
-                    {s.message && <Text style={styles.swapMessage}>"{s.message}"</Text>}
+                    {s.message && <Text style={styles.swapMessage}>“{s.message}”</Text>}
 
                     {isIncoming && s.status === "pending" && (
                       <View style={styles.actions}>

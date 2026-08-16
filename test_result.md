@@ -101,3 +101,113 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+## user_problem_statement: "Completare LAPS Turni e rendere affidabili i flussi di turni, ferie e scambi"
+## backend:
+##   - task: "Validazione e modifica turni"
+##     implemented: true
+##     working: true
+##     file: "backend/server.py"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Aggiunto PUT /api/shifts/{id} e controlli per duplicati, ruolo, ferie e smontante/riposo."
+##       - working: true
+##         agent: "main"
+##         comment: "Verificato con test API isolati: creazione, modifica, duplicati, date non valide, ferie e riposo post-notte."
+##   - task: "Generazione mensile sicura per squadre da tre"
+##     implemented: true
+##     working: true
+##     file: "backend/server.py"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Generazione allineata a 1 Autista + 1 Capoturno + 1 Soccorritore, senza fallback che viola i riposi."
+##       - working: true
+##         agent: "main"
+##         comment: "Verificati composizione 1+1+1, equità, continuità dei riposi tra mesi e sostituzione atomica del mese."
+##   - task: "Vincoli ferie e scambi"
+##     implemented: true
+##     working: true
+##     file: "backend/server.py"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Aggiunti controlli su proprietà del turno, sovrapposizioni, ruoli e conflitti di assegnazione."
+##       - working: true
+##         agent: "main"
+##         comment: "Verificati richieste sovrapposte, approvazione con turni esistenti, proprietà e accettazione degli scambi."
+##   - task: "Autenticazione PIN e autorizzazioni"
+##     implemented: true
+##     working: true
+##     file: "backend/server.py"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: true
+##         agent: "main"
+##         comment: "Verificati login, PIN errato, sessioni ruotate, permessi admin/operatore, reset PIN e migrazione senza perdita di turni."
+## frontend:
+##   - task: "Integrazione modifica turno"
+##     implemented: true
+##     working: true
+##     file: "frontend/app/shift-new.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Il frontend usava già PUT; ora il backend espone l'endpoint richiesto."
+##       - working: true
+##         agent: "main"
+##         comment: "Lint e controllo TypeScript superati; export web statico completato con 20 route."
+##   - task: "Generazione turni da interfaccia amministratore"
+##     implemented: true
+##     working: true
+##     file: "frontend/app/generate-shifts.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: true
+##         agent: "main"
+##         comment: "Aggiunta schermata per generare o sostituire un mese; lint, typecheck ed export web superati."
+##   - task: "Accesso e gestione PIN"
+##     implemented: true
+##     working: true
+##     file: "frontend/app/index.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: true
+##         agent: "main"
+##         comment: "Aggiunti login PIN, migrazione dati esistenti, cambio PIN personale e reset PIN da parte dell’admin; lint e TypeScript superati."
+## metadata:
+##   created_by: "main_agent"
+##   version: "1.3"
+##   test_sequence: 5
+##   run_ui: false
+## test_plan:
+##   current_focus: []
+##   stuck_tasks: []
+##   test_all: true
+##   test_priority: "high_first"
+## agent_communication:
+##   - agent: "main"
+##     message: "I vecchi test remoti sono stati esclusi perché modificano dati pubblici. Verranno sostituiti da test locali isolati con database in memoria."
+##   - agent: "main"
+##     message: "Suite finale: 9 test backend superati; lint e TypeScript senza errori; export web statico completato. I test sono locali e non modificano servizi esterni."
+##   - agent: "main"
+##     message: "Suite PIN/autorizzazioni integrata: 12 test backend superati; lint e TypeScript senza errori."

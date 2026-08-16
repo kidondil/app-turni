@@ -3,18 +3,20 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useUser } from "@/src/context/UserContext";
-import { colors, roleColor, API_URL } from "@/src/theme";
+import { AuthResponse, useUser } from "@/src/context/UserContext";
+import { colors, roleColor } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
-type Member = { name: string; role: "Autista" | "Capoturno" | "Soccorritore" };
+type Member = { name: string; role: "Autista" | "Capoturno" | "Soccorritore"; pin: string };
 
 const ROLES: Member["role"][] = ["Autista", "Capoturno", "Soccorritore"];
 
 export default function SetupScreen() {
   const router = useRouter();
-  const { refreshUsers } = useUser();
+  const { acceptSession, refreshStatus } = useUser();
   const [members, setMembers] = useState<Member[]>([]);
   const [newName, setNewName] = useState("");
+  const [newPin, setNewPin] = useState("");
   const [newRole, setNewRole] = useState<Member["role"]>("Autista");
   const [adminIdx, setAdminIdx] = useState<number>(-1);
   const [submitting, setSubmitting] = useState(false);
@@ -24,8 +26,13 @@ export default function SetupScreen() {
       Alert.alert("Errore", "Inserisci un nome");
       return;
     }
-    setMembers([...members, { name: newName.trim(), role: newRole }]);
+    if (!/^\d{4,6}$/.test(newPin)) {
+      Alert.alert("PIN non valido", "Il PIN personale deve contenere da 4 a 6 cifre");
+      return;
+    }
+    setMembers([...members, { name: newName.trim(), role: newRole, pin: newPin }]);
     setNewName("");
+    setNewPin("");
   };
 
   const removeMember = (idx: number) => {
@@ -45,22 +52,18 @@ export default function SetupScreen() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/setup`, {
+      const auth = await apiRequest<AuthResponse>("/api/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ members, admin_index: adminIdx }),
       });
-      if (res.ok) {
-        await refreshUsers();
-        Alert.alert("Configurazione completata", "L'app è pronta all'uso", [
-          { text: "Inizia", onPress: () => router.replace("/") },
-        ]);
-      } else {
-        const err = await res.json();
-        Alert.alert("Errore", err.detail || "Setup fallito");
-      }
+      await acceptSession(auth);
+      await refreshStatus();
+      Alert.alert("Configurazione completata", "L'app è pronta all'uso", [
+        { text: "Inizia", onPress: () => router.replace("/") },
+      ]);
     } catch (e) {
-      Alert.alert("Errore", "Setup fallito");
+      Alert.alert("Errore", apiErrorMessage(e, "Setup fallito"));
     } finally {
       setSubmitting(false);
     }
@@ -80,7 +83,7 @@ export default function SetupScreen() {
               <Ionicons name="medkit" size={32} color={colors.primaryFg} />
             </View>
             <Text style={styles.title}>LAPS Turni</Text>
-            <Text style={styles.subtitle}>Aggiungi i membri della cooperativa e scegli l'amministratore</Text>
+            <Text style={styles.subtitle}>Aggiungi i membri della cooperativa e scegli l’amministratore</Text>
           </View>
 
           <View style={styles.summaryRow}>
@@ -107,6 +110,17 @@ export default function SetupScreen() {
             value={newName}
             onChangeText={setNewName}
             testID="new-member-name"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="PIN personale (4–6 cifre)"
+            placeholderTextColor={colors.textMuted}
+            value={newPin}
+            onChangeText={(value) => setNewPin(value.replace(/\D/g, "").slice(0, 6))}
+            keyboardType="number-pad"
+            secureTextEntry
+            maxLength={6}
+            testID="new-member-pin"
           />
           <View style={styles.roleRow}>
             {ROLES.map((r) => (
@@ -140,6 +154,7 @@ export default function SetupScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.memberName}>{m.name}</Text>
                     <Text style={styles.memberRole}>{m.role}</Text>
+                    <Text style={styles.memberPin}>PIN personale impostato</Text>
                   </View>
                   {adminIdx === idx && (
                     <View style={styles.adminBadge}>
@@ -195,6 +210,7 @@ const styles = StyleSheet.create({
   memberDot: { width: 10, height: 10, borderRadius: 5 },
   memberName: { fontSize: 14, fontWeight: "600", color: colors.textPrimary },
   memberRole: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+  memberPin: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
   adminBadge: { backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   adminText: { fontSize: 9, fontWeight: "700", color: colors.primaryFg, letterSpacing: 0.8 },
   delBtn: { padding: 4 },

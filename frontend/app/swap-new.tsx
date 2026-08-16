@@ -4,7 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, shiftStyle, API_URL } from "@/src/theme";
+import { colors, shiftStyle } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Shift = { id: string; date: string; shift_type: string; user_id: string; user_name: string; role: string };
 
@@ -21,15 +22,17 @@ export default function SwapNewScreen() {
   useEffect(() => {
     if (!currentUser) { router.replace("/"); return; }
     (async () => {
-      const res = await fetch(`${API_URL}/api/shifts?user_id=${currentUser.id}`);
-      const data: Shift[] = await res.json();
-      const today = new Date().toISOString().slice(0, 10);
-      setMyShifts(data.filter((s) => s.date >= today));
+      try {
+        const data = await apiRequest<Shift[]>(`/api/shifts?user_id=${currentUser.id}`);
+        const today = new Date().toISOString().slice(0, 10);
+        setMyShifts(data.filter((s) => s.date >= today));
+      } catch (error) {
+        Alert.alert("Errore", apiErrorMessage(error, "Impossibile caricare i turni"));
+      }
     })();
   }, [currentUser, router]);
 
   const colleagues = users.filter((u) => u.role === currentUser?.role && u.id !== currentUser?.id);
-  const shift = myShifts.find((s) => s.id === selectedShift);
 
   const submit = async () => {
     if (!selectedShift || !selectedColleague || !currentUser) {
@@ -38,7 +41,7 @@ export default function SwapNewScreen() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/swaps`, {
+      await apiRequest("/api/swaps", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -48,16 +51,11 @@ export default function SwapNewScreen() {
           message,
         }),
       });
-      if (res.ok) {
-        Alert.alert("Richiesta inviata", "Il collega riceverà una notifica", [
-          { text: "OK", onPress: () => router.back() },
-        ]);
-      } else {
-        const err = await res.json();
-        Alert.alert("Errore", err.detail || "Invio fallito");
-      }
+      Alert.alert("Richiesta inviata", "Il collega riceverà una notifica", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
     } catch (e) {
-      Alert.alert("Errore", "Invio fallito");
+      Alert.alert("Errore", apiErrorMessage(e, "Invio fallito"));
     } finally {
       setSubmitting(false);
     }

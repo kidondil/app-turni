@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import React, { useState, useCallback, useMemo } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors, shiftStyle, monthNamesIt, weekdaysShortIt, API_URL } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Shift = {
   id: string;
@@ -35,26 +36,26 @@ export default function CalendarScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [sRes, hRes] = await Promise.all([
-        fetch(`${API_URL}/api/shifts?month=${monthStr}`),
-        fetch(`${API_URL}/api/holidays?year=${year}`),
+      const [shiftData, holidayData] = await Promise.all([
+        apiRequest<Shift[]>(`/api/shifts?month=${monthStr}`),
+        apiRequest<Holiday[]>(`/api/holidays?year=${year}`),
       ]);
-      setShifts(await sRes.json());
-      setHolidays(await hRes.json());
+      setShifts(shiftData);
+      setHolidays(holidayData);
     } catch (e) {
-      console.error(e);
+      Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare il calendario"));
     } finally {
       setLoading(false);
     }
   }, [monthStr, year]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!currentUser) {
       router.replace("/");
       return;
     }
     load();
-  }, [load, currentUser, router]);
+  }, [load, currentUser, router]));
 
   const shiftsByDate = useMemo(() => {
     const map: Record<string, Shift[]> = {};
@@ -97,9 +98,19 @@ export default function CalendarScreen() {
   };
 
   const handleExport = async () => {
+    if (!API_URL) {
+      Alert.alert("Errore", "Il collegamento al backend non è configurato");
+      return;
+    }
     const url = `${API_URL}/api/export/${monthStr}`;
-    if (typeof window !== "undefined") {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
       window.open(url, "_blank");
+    } else {
+      try {
+        await Linking.openURL(url);
+      } catch {
+        Alert.alert("Errore", "Impossibile aprire l'esportazione CSV");
+      }
     }
   };
 

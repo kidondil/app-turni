@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, shiftStyle, roleColor, API_URL } from "@/src/theme";
+import { colors, shiftStyle, roleColor } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Shift = {
   id: string;
@@ -32,22 +33,21 @@ export default function DayDetailScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [sRes, hRes] = await Promise.all([
-        fetch(`${API_URL}/api/shifts?date_str=${date}`),
-        fetch(`${API_URL}/api/holidays?year=${date?.slice(0, 4)}`),
+      const [shiftData, hols] = await Promise.all([
+        apiRequest<Shift[]>(`/api/shifts?date_str=${date}`),
+        apiRequest<{ date: string; name: string }[]>(`/api/holidays?year=${date?.slice(0, 4)}`),
       ]);
-      setShifts(await sRes.json());
-      const hols = await hRes.json();
+      setShifts(shiftData);
       const h = hols.find((x: { date: string; name: string }) => x.date === date);
       setHoliday(h?.name || null);
     } catch (e) {
-      console.error(e);
+      Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare la giornata"));
     } finally {
       setLoading(false);
     }
   }, [date]);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const deleteShift = (id: string) => {
     if (!currentUser?.is_admin) return;
@@ -56,8 +56,12 @@ export default function DayDetailScreen() {
       {
         text: "Elimina", style: "destructive",
         onPress: async () => {
-          const res = await fetch(`${API_URL}/api/shifts/${id}`, { method: "DELETE" });
-          if (res.ok) load();
+          try {
+            await apiRequest(`/api/shifts/${id}`, { method: "DELETE" });
+            load();
+          } catch (error) {
+            Alert.alert("Errore", apiErrorMessage(error, "Eliminazione non riuscita"));
+          }
         },
       },
     ]);
@@ -65,6 +69,20 @@ export default function DayDetailScreen() {
 
   const requestSwap = (shift: Shift) => {
     router.push({ pathname: "/swap-new", params: { shift_id: shift.id } });
+  };
+
+  const editShift = (shift: Shift) => {
+    if (!currentUser?.is_admin) return;
+    router.push({
+      pathname: "/shift-new",
+      params: {
+        mode: "edit",
+        shift_id: shift.id,
+        date: shift.date,
+        shift_type: shift.shift_type,
+        user_id: shift.user_id,
+      },
+    });
   };
 
   if (loading) {
@@ -125,9 +143,14 @@ export default function DayDetailScreen() {
                         </TouchableOpacity>
                       )}
                       {currentUser?.is_admin && (
-                        <TouchableOpacity style={styles.delBtn} onPress={() => deleteShift(m.id)} testID={`del-${m.id}`}>
-                          <Ionicons name="trash-outline" size={16} color={ss.text} />
-                        </TouchableOpacity>
+                        <>
+                          <TouchableOpacity style={styles.iconBtn} onPress={() => editShift(m)} testID={`edit-${m.id}`}>
+                            <Ionicons name="pencil" size={16} color={ss.text} />
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.iconBtn} onPress={() => deleteShift(m.id)} testID={`del-${m.id}`}>
+                            <Ionicons name="trash-outline" size={16} color={ss.text} />
+                          </TouchableOpacity>
+                        </>
                       )}
                     </View>
                   );
@@ -171,7 +194,7 @@ const styles = StyleSheet.create({
   memberRole: { fontSize: 11, marginTop: 2 },
   swapBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" },
   swapBtnText: { fontSize: 11, fontWeight: "600" },
-  delBtn: { padding: 6 },
+  iconBtn: { padding: 6 },
   addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, padding: 14, borderRadius: 14, gap: 8, marginTop: 8 },
   addBtnText: { color: colors.primaryFg, fontWeight: "700", fontSize: 14 },
 });

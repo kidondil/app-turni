@@ -13,10 +13,13 @@ Italian rescue cooperative shift management mobile app for 16 members across 3 r
 - **Pomeriggio**: 14:00 - 20:00 (6h)
 - **Notte/Trasporti**: 20:00 - 08:00 (12h)
 
-Each shift contains: 1 Autista + 1 Capoturno + 2 Soccorritori (4 people per shift, 12 people/day).
+Each shift contains: 1 Autista + 1 Capoturno + 1 Soccorritore (3 people per shift, 9 assignments/day).
 
 ## Authentication
-**NO LOGIN** - shared app with user selection stored in AsyncStorage.
+- Personal 4-6 digit PIN for every operator.
+- Salted PBKDF2 hash on the backend; PINs are never stored in clear text.
+- Bearer sessions expire after 30 days and are stored in the native secure store when available.
+- Administrative mutations are enforced by the backend, not only hidden in the UI.
 
 ## Core Features
 1. **User selector** (index): grid of 16 users grouped by role
@@ -36,5 +39,5 @@ Capodanno, Epifania, Liberazione, Lavoratori, Repubblica, Ferragosto, Ognissanti
 - **Design**: Light theme, yellow (#FACC15) primary + black secondary, color-coded shifts (yellow/orange/black)
 
 ## Data Pre-seeded
-- 16 users on first startup
-- Shifts for 2026-02, 2026-03, 2026-05, 2026-06 (~1440 shifts)
+- Users are created through the first-run setup wizard; no demo users are inserted automatically.
+- Shifts are created manually or generated month by month by the administrator.

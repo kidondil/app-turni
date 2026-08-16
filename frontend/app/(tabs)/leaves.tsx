@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, API_URL } from "@/src/theme";
+import { colors } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Leave = {
   id: string;
@@ -39,12 +40,10 @@ export default function LeavesScreen() {
   const load = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const [mineRes, allRes] = await Promise.all([
-        fetch(`${API_URL}/api/leaves?user_id=${currentUser.id}`),
-        fetch(`${API_URL}/api/leaves`),
+      const [mine, all] = await Promise.all([
+        apiRequest<Leave[]>(`/api/leaves?user_id=${currentUser.id}`),
+        apiRequest<Leave[]>("/api/leaves"),
       ]);
-      const mine: Leave[] = await mineRes.json();
-      const all: Leave[] = await allRes.json();
       setMyLeaves(mine);
       // Team = same role colleagues only (excluding self)
       setTeamLeaves(all.filter((l) => l.user_id !== currentUser.id && isSameRole(l.user_id)));
@@ -52,27 +51,25 @@ export default function LeavesScreen() {
         setPendingLeaves(all.filter((l) => l.status === "pending"));
       }
     } catch (e) {
-      console.error(e);
+      Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare le ferie"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [currentUser]);
+  }, [currentUser, isSameRole]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!currentUser) { router.replace("/"); return; }
     load();
-  }, [currentUser, load, router]);
+  }, [currentUser, load, router]));
 
   const respondLeave = async (id: string, action: "approve" | "reject") => {
     try {
-      const res = await fetch(`${API_URL}/api/leaves/${id}?action=${action}`, { method: "PATCH" });
-      if (res.ok) {
-        Alert.alert("Successo", `Ferie ${action === "approve" ? "approvate" : "rifiutate"}`);
-        load();
-      }
+      await apiRequest(`/api/leaves/${id}?action=${action}`, { method: "PATCH" });
+      Alert.alert("Successo", `Ferie ${action === "approve" ? "approvate" : "rifiutate"}`);
+      load();
     } catch (e) {
-      Alert.alert("Errore", "Operazione fallita");
+      Alert.alert("Errore", apiErrorMessage(e));
     }
   };
 
@@ -151,7 +148,7 @@ export default function LeavesScreen() {
                   <Text style={[styles.statusText, statusStyle(l.status).text]}>{statusLabel(l.status)}</Text>
                 </View>
               </View>
-              {l.reason && <Text style={styles.cardReason}>"{l.reason}"</Text>}
+              {l.reason && <Text style={styles.cardReason}>“{l.reason}”</Text>}
               {currentUser.is_admin && l.status === "pending" && (
                 <View style={styles.actions}>
                   <TouchableOpacity style={styles.rejectBtn} onPress={() => respondLeave(l.id, "reject")} testID={`reject-${l.id}`}>

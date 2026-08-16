@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
-import { colors, roleColor, API_URL } from "@/src/theme";
+import { colors, roleColor } from "@/src/theme";
+import { apiErrorMessage, apiRequest } from "@/src/api";
 
 type Stats = {
   total_shifts: number;
@@ -25,7 +26,6 @@ export default function ProfileScreen() {
   const [pendingLeaves, setPendingLeaves] = useState<Leave[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [generating, setGenerating] = useState(false);
 
   const today = new Date();
   const year = today.getFullYear();
@@ -33,91 +33,57 @@ export default function ProfileScreen() {
   const load = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const [statsRes, notifRes, leavesRes] = await Promise.all([
-        fetch(`${API_URL}/api/stats/${currentUser.id}?year=${year}`),
-        fetch(`${API_URL}/api/notifications?user_id=${currentUser.id}`),
-        fetch(`${API_URL}/api/leaves?user_id=${currentUser.id}`),
+      const [statsData, notifData, leavesData] = await Promise.all([
+        apiRequest<Stats>(`/api/stats/${currentUser.id}?year=${year}`),
+        apiRequest<Notification[]>(`/api/notifications?user_id=${currentUser.id}`),
+        apiRequest<Leave[]>(`/api/leaves?user_id=${currentUser.id}`),
       ]);
-      setStats(await statsRes.json());
-      setNotifs(await notifRes.json());
-      setMyLeaves(await leavesRes.json());
+      setStats(statsData);
+      setNotifs(notifData);
+      setMyLeaves(leavesData);
 
       if (currentUser.is_admin) {
-        const pRes = await fetch(`${API_URL}/api/leaves?status=pending`);
-        setPendingLeaves(await pRes.json());
+        setPendingLeaves(await apiRequest<Leave[]>("/api/leaves?status=pending"));
       }
     } catch (e) {
-      console.error(e);
+      Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare il profilo"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [currentUser, year]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!currentUser) {
       router.replace("/");
       return;
     }
     load();
-  }, [load, currentUser, router]);
+  }, [load, currentUser, router]));
 
   const handleLogout = async () => {
     await clearUser();
     router.replace("/");
   };
 
-  const generateShifts = async (overwrite: boolean) => {
-    setGenerating(true);
-    try {
-      const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-      const res = await fetch(`${API_URL}/api/shifts/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year: nextMonth.getFullYear(), month: nextMonth.getMonth() + 1, overwrite }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        Alert.alert("Successo", `Generati ${data.created} turni per ${data.month}`);
-      } else {
-        const err = await res.json();
-        Alert.alert("Errore", err.detail || "Generazione fallita");
-      }
-    } catch (e) {
-      Alert.alert("Errore", "Generazione fallita");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleGenerate = () => {
-    Alert.alert(
-      "Genera turni",
-      "Vuoi generare i turni per il mese prossimo con rotazione equa?",
-      [
-        { text: "Annulla", style: "cancel" },
-        { text: "Genera", onPress: () => generateShifts(false) },
-        { text: "Sovrascrivi", onPress: () => generateShifts(true), style: "destructive" },
-      ]
-    );
-  };
-
   const respondLeave = async (id: string, action: "approve" | "reject") => {
     try {
-      const res = await fetch(`${API_URL}/api/leaves/${id}?action=${action}`, { method: "PATCH" });
-      if (res.ok) {
-        Alert.alert("Successo", `Ferie ${action === "approve" ? "approvate" : "rifiutate"}`);
-        load();
-      }
+      await apiRequest(`/api/leaves/${id}?action=${action}`, { method: "PATCH" });
+      Alert.alert("Successo", `Ferie ${action === "approve" ? "approvate" : "rifiutate"}`);
+      load();
     } catch (e) {
-      Alert.alert("Errore", "Operazione fallita");
+      Alert.alert("Errore", apiErrorMessage(e));
     }
   };
 
   const markAllRead = async () => {
     if (!currentUser) return;
-    await fetch(`${API_URL}/api/notifications/mark-all-read?user_id=${currentUser.id}`, { method: "POST" });
-    load();
+    try {
+      await apiRequest(`/api/notifications/mark-all-read?user_id=${currentUser.id}`, { method: "POST" });
+      load();
+    } catch (error) {
+      Alert.alert("Errore", apiErrorMessage(error));
+    }
   };
 
   if (!currentUser) return null;
@@ -209,6 +175,11 @@ export default function ProfileScreen() {
           <Text style={styles.actionText}>Nuovo scambio turno</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </TouchableOpacity>
+        <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/change-pin")} testID="action-change-pin">
+          <Ionicons name="keypad-outline" size={22} color={colors.textPrimary} />
+          <Text style={styles.actionText}>Cambia PIN personale</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </TouchableOpacity>
 
         {/* Admin section */}
         {currentUser.is_admin && (
@@ -216,13 +187,12 @@ export default function ProfileScreen() {
             <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Pannello Admin</Text>
             <TouchableOpacity
               style={[styles.actionRow, { backgroundColor: colors.primary }]}
-              onPress={handleGenerate}
-              disabled={generating}
+              onPress={() => router.push("/generate-shifts")}
               testID="generate-shifts-btn"
             >
               <Ionicons name="sparkles" size={22} color={colors.primaryFg} />
               <Text style={[styles.actionText, { color: colors.primaryFg, fontWeight: "700" }]}>
-                {generating ? "Generazione..." : "Genera turni mese prossimo"}
+                Genera o rigenera turni
               </Text>
             </TouchableOpacity>
 
@@ -249,11 +219,13 @@ export default function ProfileScreen() {
                       {
                         text: "Conferma", style: "destructive",
                         onPress: async () => {
-                          const res = await fetch(`${API_URL}/api/users/${u.id}/admin?value=true`, { method: "PATCH" });
-                          if (res.ok) {
+                          try {
+                            await apiRequest(`/api/users/${u.id}/admin?value=true`, { method: "PATCH" });
                             Alert.alert("Fatto", `${u.name} è ora amministratore`);
                             await clearUser();
                             router.replace("/");
+                          } catch (error) {
+                            Alert.alert("Errore", apiErrorMessage(error, "Cambio amministratore non riuscito"));
                           }
                         },
                       },
@@ -272,7 +244,7 @@ export default function ProfileScreen() {
                   <View key={l.id} style={styles.leaveCard}>
                     <Text style={styles.leaveUser}>{l.user_name}</Text>
                     <Text style={styles.leaveDates}>{l.start_date} → {l.end_date}</Text>
-                    {l.reason && <Text style={styles.leaveReason}>"{l.reason}"</Text>}
+                    {l.reason && <Text style={styles.leaveReason}>“{l.reason}”</Text>}
                     <View style={styles.leaveActions}>
                       <TouchableOpacity style={styles.rejectBtn} onPress={() => respondLeave(l.id, "reject")}>
                         <Text style={styles.rejectText}>Rifiuta</Text>
@@ -302,7 +274,7 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                 </View>
-                {l.reason && <Text style={styles.leaveReason}>"{l.reason}"</Text>}
+                {l.reason && <Text style={styles.leaveReason}>“{l.reason}”</Text>}
               </View>
             ))}
           </>

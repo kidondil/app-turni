@@ -11,7 +11,10 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#F8F9FA" } }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="setup" />
+          <Stack.Screen name="pin-setup" />
+          <Stack.Screen name="change-pin" />
           <Stack.Screen name="admin-users" />
+          <Stack.Screen name="generate-shifts" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="day/[date]" options={{ presentation: "card" }} />
         </Stack>
