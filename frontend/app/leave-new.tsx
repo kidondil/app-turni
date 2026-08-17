@@ -42,7 +42,7 @@ export default function LeaveNewScreen() {
           reason,
         }),
       });
-      Alert.alert("Richiesta inviata", "L'amministratore riceverà la tua richiesta", [
+      Alert.alert("Richiesta inviata", "Gli amministratori riceveranno la tua richiesta", [
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (e) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "laps-turni-static-v1";
+const CACHE_NAME = "laps-turni-static-v2";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

@@ -2,7 +2,7 @@
   "expo": {
     "name": "LAPS Turni",
     "slug": "laps-turni",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "laps-turni",
@@ -29,7 +29,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-image.png",
-          "imageWidth": 200,
+          "imageWidth": 280,
           "resizeMode": "contain",
           "backgroundColor": "#000"
         }

@@ -15,14 +15,12 @@ type Stats = {
   holidays_worked: { date: string; name: string; shift: string }[];
 };
 
-type Notification = { id: string; title: string; body: string; read: boolean; created_at: string; type: string };
 type Leave = { id: string; user_id: string; user_name: string; start_date: string; end_date: string; reason?: string; status: string };
 
 export default function ProfileScreen() {
-  const { currentUser, clearUser, users } = useUser();
+  const { currentUser, clearUser } = useUser();
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [notifs, setNotifs] = useState<Notification[]>([]);
   const [myLeaves, setMyLeaves] = useState<Leave[]>([]);
   const [pendingLeaves, setPendingLeaves] = useState<Leave[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,13 +32,11 @@ export default function ProfileScreen() {
   const load = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const [statsData, notifData, leavesData] = await Promise.all([
+      const [statsData, leavesData] = await Promise.all([
         apiRequest<Stats>(`/api/stats/${currentUser.id}?year=${year}`),
-        apiRequest<Notification[]>(`/api/notifications?user_id=${currentUser.id}`),
         apiRequest<Leave[]>(`/api/leaves?user_id=${currentUser.id}`),
       ]);
       setStats(statsData);
-      setNotifs(notifData);
       setMyLeaves(leavesData);
 
       if (currentUser.is_admin) {
@@ -100,23 +96,12 @@ export default function ProfileScreen() {
     );
   };
 
-  const markAllRead = async () => {
-    if (!currentUser) return;
-    try {
-      await apiRequest(`/api/notifications/mark-all-read?user_id=${currentUser.id}`, { method: "POST" });
-      load();
-    } catch (error) {
-      Alert.alert("Errore", apiErrorMessage(error));
-    }
-  };
-
   if (!currentUser) return null;
   if (loading) {
     return <SafeAreaView style={styles.loading}><ActivityIndicator color={colors.primary} size="large" /></SafeAreaView>;
   }
 
   const initials = currentUser.name.split(" ").map((n) => n[0]).slice(0, 2).join("");
-  const unread = notifs.filter((n) => !n.read);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -248,36 +233,15 @@ export default function ProfileScreen() {
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
-            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Cambia amministratore</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              {users.filter((u) => u.id !== currentUser.id).map((u) => (
-                <TouchableOpacity
-                  key={u.id}
-                  style={[styles.actionRow, { paddingVertical: 8, paddingHorizontal: 10, marginBottom: 0, flex: 0 }]}
-                  testID={`make-admin-${u.id}`}
-                  onPress={() => {
-                    Alert.alert("Cambia admin", `Trasferire i diritti di amministratore a ${u.name}? Perderai il ruolo admin.`, [
-                      { text: "Annulla", style: "cancel" },
-                      {
-                        text: "Conferma", style: "destructive",
-                        onPress: async () => {
-                          try {
-                            await apiRequest(`/api/users/${u.id}/admin?value=true`, { method: "PATCH" });
-                            Alert.alert("Fatto", `${u.name} è ora amministratore`);
-                            await clearUser();
-                            router.replace("/");
-                          } catch (error) {
-                            Alert.alert("Errore", apiErrorMessage(error, "Cambio amministratore non riuscito"));
-                          }
-                        },
-                      },
-                    ]);
-                  }}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textPrimary }}>{u.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={() => router.push("/admin-settings")}
+              testID="manage-admins-btn"
+            >
+              <Ionicons name="shield-checkmark-outline" size={22} color={colors.textPrimary} />
+              <Text style={styles.actionText}>Gestisci amministratori</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
 
             {pendingLeaves.length > 0 && (
               <>
@@ -326,31 +290,6 @@ export default function ProfileScreen() {
               </View>
             ))}
           </>
-        )}
-
-        {/* Notifications */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Notifiche {unread.length > 0 && `(${unread.length})`}</Text>
-          {unread.length > 0 && (
-            <TouchableOpacity onPress={markAllRead}>
-              <Text style={styles.linkText}>Segna tutte come lette</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        {notifs.length === 0 ? (
-          <View style={[styles.card, { alignItems: "center", padding: 24 }]}>
-            <Text style={styles.muted}>Nessuna notifica</Text>
-          </View>
-        ) : (
-          notifs.slice(0, 10).map((n) => (
-            <View key={n.id} style={[styles.notifRow, !n.read && styles.notifUnread]}>
-              {!n.read && <View style={styles.unreadDot} />}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.notifTitle}>{n.title}</Text>
-                <Text style={styles.notifBody}>{n.body}</Text>
-              </View>
-            </View>
-          ))
         )}
 
         <View style={{ height: 40 }} />

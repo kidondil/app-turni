@@ -132,7 +132,12 @@ export default function HomeScreen() {
             <Text style={styles.userName}>{currentUser.name.split(" ")[0]}</Text>
             <Text style={styles.dateText}>{formatDateIt(today)}</Text>
           </View>
-          <TouchableOpacity style={styles.notifBtn} onPress={() => router.push("/profile")} testID="notif-button">
+          <TouchableOpacity
+            style={styles.notifBtn}
+            onPress={() => router.push("/notifications")}
+            testID="notif-button"
+            accessibilityLabel={unreadCount > 0 ? `Notifiche, ${unreadCount} da leggere` : "Notifiche"}
+          >
             <Ionicons name="notifications" size={22} color={colors.textPrimary} />
             {unreadCount > 0 && (
               <View style={styles.notifBadge}>

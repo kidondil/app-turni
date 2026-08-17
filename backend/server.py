@@ -38,7 +38,7 @@ async def lifespan(_: FastAPI):
     client.close()
 
 
-app = FastAPI(title="LAPS Turni API", version="1.6.0", lifespan=lifespan)
+app = FastAPI(title="LAPS Turni API", version="1.7.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 ROLE_AUTISTA = "Autista"
@@ -262,7 +262,9 @@ class SetupMember(BaseModel):
 
 class SetupPayload(BaseModel):
     members: List[SetupMember]
-    admin_index: int  # index in members list who will be admin
+    # admin_index resta accettato per compatibilita con le installazioni precedenti.
+    admin_index: Optional[int] = None
+    admin_indices: Optional[List[int]] = None
 
 
 class LoginPayload(BaseModel):
@@ -741,8 +743,15 @@ async def setup_init(payload: SetupPayload):
         raise HTTPException(400, "Setup già completato. Usa la gestione utenti.")
     if not payload.members:
         raise HTTPException(400, "Inserisci almeno un membro")
-    if payload.admin_index < 0 or payload.admin_index >= len(payload.members):
+    selected_admin_indices = payload.admin_indices
+    if selected_admin_indices is None and payload.admin_index is not None:
+        selected_admin_indices = [payload.admin_index]
+    selected_admin_indices = list(dict.fromkeys(selected_admin_indices or []))
+    if not selected_admin_indices:
+        raise HTTPException(400, "Seleziona almeno un amministratore")
+    if any(index < 0 or index >= len(payload.members) for index in selected_admin_indices):
         raise HTTPException(400, "Indice admin non valido")
+    selected_admins = set(selected_admin_indices)
     normalized_names = set()
     for m in payload.members:
         if m.role not in VALID_ROLES:
@@ -759,11 +768,11 @@ async def setup_init(payload: SetupPayload):
             "id": str(uuid.uuid4()),
             "name": m.name.strip(),
             "role": m.role,
-            "is_admin": idx == payload.admin_index,
+            "is_admin": idx in selected_admins,
             "pin_hash": hash_pin(m.pin),
         })
     await db.users.insert_many(docs)
-    admin = docs[payload.admin_index]
+    admin = docs[selected_admin_indices[0]]
     token = await create_session(admin["id"])
     return {
         "ok": True,
@@ -813,7 +822,7 @@ async def create_user(payload: UserCreate, _: dict = Depends(require_admin)):
         "id": str(uuid.uuid4()),
         "name": payload.name.strip(),
         "role": payload.role,
-        "is_admin": False,  # Admin transfer via dedicated endpoint
+        "is_admin": False,  # Gestione admin tramite endpoint dedicato
         "pin_hash": hash_pin(payload.pin),
     }
     await db.users.insert_one(user.copy())
@@ -867,7 +876,7 @@ async def delete_user(user_id: str, _: dict = Depends(require_admin)):
     if not user:
         raise HTTPException(404, "Utente non trovato")
     if user.get("is_admin"):
-        raise HTTPException(400, "Non puoi eliminare l'amministratore. Trasferisci prima il ruolo admin.")
+        raise HTTPException(400, "Rimuovi prima il ruolo amministratore da questo utente")
     # Delete user + future shifts + their swaps/leaves/notifications
     today = today_italy().isoformat()
     await db.users.delete_one({"id": user_id})
@@ -2083,12 +2092,14 @@ async def set_admin(user_id: str, value: bool, _: dict = Depends(require_admin))
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if not user:
         raise HTTPException(404, "Utente non trovato")
+    if bool(user.get("is_admin")) == value:
+        return {"ok": True, "is_admin": value}
     if not value:
-        raise HTTPException(400, "Trasferisci il ruolo admin a un altro utente")
-    # Only one admin at a time: clear others
-    await db.users.update_many({"is_admin": True}, {"$set": {"is_admin": False}})
+        admin_count = await db.users.count_documents({"is_admin": True})
+        if admin_count <= 1:
+            raise HTTPException(400, "Deve rimanere almeno un amministratore")
     await db.users.update_one({"id": user_id}, {"$set": {"is_admin": value}})
-    return {"ok": True}
+    return {"ok": True, "is_admin": value}
 
 
 # ===== ADMIN: delete month =====

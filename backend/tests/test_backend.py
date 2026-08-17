@@ -755,3 +755,40 @@ def test_admin_cannot_be_removed_without_transfer(api, users):
     admin = next(user for user in users if user["is_admin"])
     response = api.patch(f"/api/users/{admin['id']}/admin", params={"value": "false"})
     assert response.status_code == 400
+
+
+def test_multiple_admins_can_be_added_and_removed(api, users):
+    original_admin = next(user for user in users if user["is_admin"])
+    second_admin = by_role(users, "Autista")[1]
+
+    promoted = api.patch(f"/api/users/{second_admin['id']}/admin", params={"value": "true"})
+    assert promoted.status_code == 200
+    assert sum(user["is_admin"] for user in api.get("/api/users").json()) == 2
+
+    removed = api.patch(f"/api/users/{original_admin['id']}/admin", params={"value": "false"})
+    assert removed.status_code == 200
+
+    second_admin_headers = login_headers(api, second_admin, "1102")
+    last_admin = api.patch(
+        f"/api/users/{second_admin['id']}/admin",
+        params={"value": "false"},
+        headers=second_admin_headers,
+    )
+    assert last_admin.status_code == 400
+
+
+def test_setup_accepts_multiple_admins(api):
+    response = api.post(
+        "/api/setup",
+        json={
+            "members": [
+                {"name": "Admin Uno", "role": "Autista", "pin": "1111"},
+                {"name": "Admin Due", "role": "Capoturno", "pin": "2222"},
+                {"name": "Membro Tre", "role": "Soccorritore", "pin": "3333"},
+            ],
+            "admin_indices": [0, 1],
+        },
+    )
+    assert response.status_code == 200
+    api.headers.update({"Authorization": f"Bearer {response.json()['token']}"})
+    assert sum(user["is_admin"] for user in api.get("/api/users").json()) == 2

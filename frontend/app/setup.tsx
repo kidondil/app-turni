@@ -18,7 +18,7 @@ export default function SetupScreen() {
   const [newName, setNewName] = useState("");
   const [newPin, setNewPin] = useState("");
   const [newRole, setNewRole] = useState<Member["role"]>("Autista");
-  const [adminIdx, setAdminIdx] = useState<number>(-1);
+  const [adminIndices, setAdminIndices] = useState<number[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   const addMember = () => {
@@ -37,8 +37,15 @@ export default function SetupScreen() {
 
   const removeMember = (idx: number) => {
     setMembers(members.filter((_, i) => i !== idx));
-    if (adminIdx === idx) setAdminIdx(-1);
-    else if (adminIdx > idx) setAdminIdx(adminIdx - 1);
+    setAdminIndices((selected) => selected
+      .filter((adminIdx) => adminIdx !== idx)
+      .map((adminIdx) => adminIdx > idx ? adminIdx - 1 : adminIdx));
+  };
+
+  const toggleAdmin = (idx: number) => {
+    setAdminIndices((selected) => selected.includes(idx)
+      ? selected.filter((adminIdx) => adminIdx !== idx)
+      : [...selected, idx]);
   };
 
   const submit = async () => {
@@ -46,8 +53,8 @@ export default function SetupScreen() {
       Alert.alert("Errore", "Aggiungi almeno un membro");
       return;
     }
-    if (adminIdx < 0) {
-      Alert.alert("Errore", "Seleziona un amministratore");
+    if (adminIndices.length === 0) {
+      Alert.alert("Errore", "Seleziona almeno un amministratore");
       return;
     }
     setSubmitting(true);
@@ -55,7 +62,7 @@ export default function SetupScreen() {
       const auth = await apiRequest<AuthResponse>("/api/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ members, admin_index: adminIdx }),
+        body: JSON.stringify({ members, admin_indices: adminIndices }),
       });
       await acceptSession(auth);
       await refreshStatus();
@@ -83,7 +90,7 @@ export default function SetupScreen() {
               <Ionicons name="medkit" size={32} color={colors.primaryFg} />
             </View>
             <Text style={styles.title}>LAPS Turni</Text>
-            <Text style={styles.subtitle}>Aggiungi i membri della cooperativa e scegli l’amministratore</Text>
+            <Text style={styles.subtitle}>Aggiungi i membri della cooperativa e scegli uno o più amministratori</Text>
           </View>
 
           <View style={styles.summaryRow}>
@@ -146,12 +153,13 @@ export default function SetupScreen() {
           {/* Members list */}
           {members.length > 0 && (
             <>
-              <Text style={[styles.label, { marginTop: 24 }]}>Membri ({members.length}) — tocca uno per renderlo admin</Text>
+              <Text style={[styles.label, { marginTop: 24 }]}>Membri ({members.length})</Text>
+              <Text style={styles.adminHelp}>Tocca le righe per scegliere uno o più amministratori.</Text>
               {members.map((m, idx) => (
                 <TouchableOpacity
                   key={idx}
-                  style={[styles.memberRow, adminIdx === idx && styles.memberAdmin]}
-                  onPress={() => setAdminIdx(idx)}
+                  style={[styles.memberRow, adminIndices.includes(idx) && styles.memberAdmin]}
+                  onPress={() => toggleAdmin(idx)}
                   testID={`member-${idx}`}
                 >
                   <View style={[styles.memberDot, { backgroundColor: roleColor(m.role) }]} />
@@ -160,11 +168,13 @@ export default function SetupScreen() {
                     <Text style={styles.memberRole}>{m.role}</Text>
                     <Text style={styles.memberPin}>PIN personale impostato</Text>
                   </View>
-                  {adminIdx === idx && (
-                    <View style={styles.adminBadge}>
-                      <Text style={styles.adminText}>ADMIN</Text>
-                    </View>
-                  )}
+                  <View style={[styles.adminCheck, adminIndices.includes(idx) && styles.adminCheckSelected]}>
+                    <Ionicons
+                      name={adminIndices.includes(idx) ? "checkmark" : "shield-outline"}
+                      size={18}
+                      color={adminIndices.includes(idx) ? colors.primaryFg : colors.textMuted}
+                    />
+                  </View>
                   <TouchableOpacity onPress={() => removeMember(idx)} style={styles.delBtn} testID={`del-member-${idx}`}>
                     <Ionicons name="close-circle" size={22} color={colors.danger} />
                   </TouchableOpacity>
@@ -174,9 +184,9 @@ export default function SetupScreen() {
           )}
 
           <TouchableOpacity
-            style={[styles.submitBtn, (submitting || members.length === 0 || adminIdx < 0) && { opacity: 0.4 }]}
+            style={[styles.submitBtn, (submitting || members.length === 0 || adminIndices.length === 0) && { opacity: 0.4 }]}
             onPress={submit}
-            disabled={submitting || members.length === 0 || adminIdx < 0}
+            disabled={submitting || members.length === 0 || adminIndices.length === 0}
             testID="submit-setup"
           >
             {submitting ? <ActivityIndicator color={colors.primaryFg} /> : (
@@ -203,6 +213,7 @@ const styles = StyleSheet.create({
   summaryNum: { fontSize: 20, fontWeight: "700" },
   summaryLabel: { fontSize: 11, fontWeight: "600", marginTop: 2 },
   label: { fontSize: 14, fontWeight: "700", color: colors.textPrimary, marginBottom: 8 },
+  adminHelp: { fontSize: 12, color: colors.textSecondary, marginTop: -2, marginBottom: 10 },
   input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border, fontSize: 14, color: colors.textPrimary, marginBottom: 10 },
   roleRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
   roleBtn: { flexGrow: 1, flexBasis: "46%", paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
@@ -215,8 +226,8 @@ const styles = StyleSheet.create({
   memberName: { fontSize: 14, fontWeight: "600", color: colors.textPrimary },
   memberRole: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
   memberPin: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
-  adminBadge: { backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  adminText: { fontSize: 9, fontWeight: "700", color: colors.primaryFg, letterSpacing: 0.8 },
+  adminCheck: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background },
+  adminCheckSelected: { backgroundColor: colors.primary, borderColor: colors.primaryDark },
   delBtn: { padding: 4 },
   submitBtn: { backgroundColor: colors.primary, padding: 16, borderRadius: 14, alignItems: "center", marginTop: 24 },
   submitText: { color: colors.primaryFg, fontWeight: "700", fontSize: 16 },

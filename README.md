@@ -12,7 +12,7 @@ I servizi sono Mattina (08:00-14:00), Pomeriggio (14:00-20:00), Trasporti (08:00
 
 Ogni operatore accede con un PIN personale da 4 a 6 cifre. I PIN non vengono salvati in chiaro: il backend conserva soltanto un hash con salt e pepper. Il browser ricorda l'accesso sul dispositivo per un anno, salvo disconnessione volontaria o cancellazione dei dati del browser; cinque PIN errati bloccano temporaneamente nuovi tentativi.
 
-L'amministratore può comporre manualmente ogni turno scegliendo insieme un Autista, un Capoturno e un Soccorritore. Dalla pagina del giorno si apre **Modifica squadra** per sostituire un componente; l'eliminazione dell'intera squadra è disponibile all'interno della modifica con una conferma esplicita. Gli scambi approvati restano visibili perché aggiornano direttamente l'assegnazione del turno.
+Gli amministratori possono comporre manualmente ogni turno scegliendo insieme un Autista, un Capoturno e un Soccorritore. Dalla pagina del giorno si apre **Modifica squadra** per sostituire un componente; l'eliminazione dell'intera squadra è disponibile all'interno della modifica con una conferma esplicita. Gli scambi approvati restano visibili perché aggiornano direttamente l'assegnazione del turno. Dalla pagina **Gestisci amministratori** si possono abilitare più persone contemporaneamente; l'app impedisce di rimuovere l'ultimo amministratore rimasto.
 
 ## Volontari
 
@@ -24,7 +24,7 @@ Le date sono mostrate nel formato italiano `GG/MM/AAAA`. Per le ferie si può di
 
 ## Notifiche
 
-L'app conserva uno storico interno delle notifiche, consultabile dalla campanella:
+L'app conserva uno storico interno delle notifiche in una schermata dedicata, accessibile dalla campanella. Ogni avviso ha un comando grande per segnarlo come letto ed è disponibile anche **Segna tutte come lette**:
 
 - una richiesta ferie avvisa i colleghi dello stesso gruppo professionale e l'amministratore, indicando soltanto nome e date;
 - la generazione o rigenerazione dei turni avvisa tutti gli utenti;
@@ -34,7 +34,7 @@ Le notifiche vengono aggiornate quando l'utente apre o ricarica l'app. Non sono 
 
 ## Installazione PWA
 
-Il frontend web è una Progressive Web App installabile senza Play Store o App Store. Su Android, quando il browser rende disponibile l'installazione, nella Home compare **Installa LAPS Turni**. Su iPhone compare una guida con i passaggi Safari → Condividi → Aggiungi alla schermata Home. Dopo l'installazione l'app ha una propria icona e si apre a schermo intero. Gli aggiornamenti arrivano insieme ai normali deploy del frontend; i dati dei turni continuano a essere richiesti al backend e non vengono conservati offline dal service worker.
+Il frontend web è una Progressive Web App installabile senza Play Store o App Store. Su Android, quando il browser rende disponibile l'installazione, nella Home compare **Installa LAPS Turni**. Su iPhone compare una guida con i passaggi Safari → Condividi → Aggiungi alla schermata Home. Dopo l'installazione l'app usa l'icona ufficiale L.A.P.S. CARITAS nero/giallo e si apre a schermo intero. Gli aggiornamenti arrivano insieme ai normali deploy del frontend; i dati dei turni continuano a essere richiesti al backend e non vengono conservati offline dal service worker.
 
 ## Avvio del backend
 
@@ -75,7 +75,7 @@ npm run web
 
 ## Primo accesso e migrazione
 
-In una nuova installazione il wizard iniziale richiede nome, gruppo e PIN di ogni operatore, oltre alla scelta dell’amministratore.
+In una nuova installazione il wizard iniziale richiede nome, gruppo e PIN di ogni operatore, oltre alla scelta di uno o più amministratori.
 
 Se il database contiene già utenti creati con la vecchia versione, l’app apre automaticamente la schermata **Proteggi gli accessi**. Inserire il `PIN_BOOTSTRAP_KEY` configurato sul backend e assegnare un PIN a ciascun collega. Utenti, turni, ferie e scambi esistenti vengono conservati. Dopo la migrazione `PIN_BOOTSTRAP_KEY` può essere rimosso dall’ambiente del server; `PIN_PEPPER` deve invece rimanere invariato.
 
