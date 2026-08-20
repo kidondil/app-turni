@@ -1,7 +1,7 @@
 """Tariffario trasporti LAPS e relativo calcolo proporzionale.
 
-I chilometri e le regole provengono dal file
-``tariffario_trasporti_cabras_visita_corretto.xlsx``.
+I chilometri e gli importi ufficiali provengono dal file
+``Tariffario Laps.xlsx``, aggiornato al 08/07/2026.
 """
 
 from __future__ import annotations
@@ -80,6 +80,15 @@ TRANSPORT_RATE_KM = [
 ]
 
 
+# Il tariffario ufficiale contiene tre importi deliberati che non coincidono
+# con la formula proporzionale usata esclusivamente per le località fuori elenco.
+OFFICIAL_RATE_OVERRIDES = {
+    "CABRAS": {"andata": 60, "andata_ritorno": 70, "visita": 80},
+    "CAGLIARI": {"andata": 180, "andata_ritorno": 250, "visita": 270},
+    "SASSARI": {"andata": 220, "andata_ritorno": 260, "visita": 280},
+}
+
+
 def normalize_town_name(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value.strip().casefold())
     return " ".join("".join(char for char in normalized if not unicodedata.combining(char)).split())
@@ -105,14 +114,14 @@ def calculate_transport_prices(km: float) -> dict:
 
 
 def transport_rates() -> list[dict]:
-    return [
-        {"paese": town, "km": km, **calculate_transport_prices(km)}
-        for town, km in TRANSPORT_RATE_KM
-    ]
+    rates = []
+    for town, km in TRANSPORT_RATE_KM:
+        prices = OFFICIAL_RATE_OVERRIDES.get(town) or calculate_transport_prices(km)
+        rates.append({"paese": town, "km": km, **prices})
+    return rates
 
 
 TRANSPORT_RATES = transport_rates()
 TRANSPORT_RATES_BY_NAME = {
     normalize_town_name(rate["paese"]): rate for rate in TRANSPORT_RATES
 }
-

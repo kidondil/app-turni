@@ -787,14 +787,30 @@ def test_transport_tariff_and_manual_estimate(api, users):
         "paese": "CAGLIARI",
         "km": 100,
         "andata": 180,
-        "andata_ritorno": 240,
-        "visita": 260,
+        "andata_ritorno": 250,
+        "visita": 270,
+    }
+    cabras = next(rate for rate in tariff.json()["rates"] if rate["paese"] == "CABRAS")
+    assert cabras == {
+        "paese": "CABRAS",
+        "km": 0,
+        "andata": 60,
+        "andata_ritorno": 70,
+        "visita": 80,
+    }
+    sassari = next(rate for rate in tariff.json()["rates"] if rate["paese"] == "SASSARI")
+    assert sassari == {
+        "paese": "SASSARI",
+        "km": 122,
+        "andata": 220,
+        "andata_ritorno": 260,
+        "visita": 280,
     }
 
     official = api.get("/api/transport-rates/estimate", params={"town": "cagliari"})
     assert official.status_code == 200
     assert official.json()["official"] is True
-    assert official.json()["andata_ritorno"] == 240
+    assert official.json()["andata_ritorno"] == 250
 
     estimated = api.get(
         "/api/transport-rates/estimate",

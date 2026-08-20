@@ -24,7 +24,7 @@ Le date sono mostrate nel formato italiano `GG/MM/AAAA`. Per le ferie si può di
 
 ## Tariffario trasporti
 
-Dal Profilo ogni utente può aprire **Tariffario trasporti**, cercare una delle 66 località e vedere gli importi di Andata, Andata/Ritorno e Visita. I dati incorporati nell'app provengono dal tariffario corretto con origine Cabras; la visita corrisponde all'andata/ritorno più 20 €.
+Dal Profilo ogni utente può aprire **Tariffario trasporti**, cercare una delle 66 località e vedere gli importi di Andata, Andata/Ritorno e Visita. I dati incorporati nell'app corrispondono al file **Tariffario Laps.xlsx**, aggiornato al 08/07/2026, con origine Cabras. Gli importi ufficiali prevalgono sempre sul calcolo proporzionale usato per le località non presenti.
 
 Per una località assente dall'elenco, il backend cerca il paese in Sardegna con Nominatim/OpenStreetMap, calcola la distanza stradale da Cabras tramite OSRM e applica le stesse regole proporzionali del tariffario. Il risultato è sempre indicato come **Stima**, distinto dagli importi ufficiali. Se il servizio cartografico non è disponibile si possono inserire manualmente i chilometri. Le ricerche riuscite vengono memorizzate in MongoDB per ridurre le richieste ai servizi esterni.
 

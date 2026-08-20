@@ -47,7 +47,7 @@ async def lifespan(_: FastAPI):
     client.close()
 
 
-app = FastAPI(title="LAPS Turni API", version="1.8.0", lifespan=lifespan)
+app = FastAPI(title="LAPS Turni API", version="1.8.1", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 ROLE_AUTISTA = "Autista"
@@ -73,7 +73,7 @@ NOMINATIM_BASE_URL = os.getenv("NOMINATIM_BASE_URL", "https://nominatim.openstre
 OSRM_BASE_URL = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org").rstrip("/")
 GEOCODING_USER_AGENT = os.getenv(
     "GEOCODING_USER_AGENT",
-    "LAPS-Turni/1.8.0 (tariffario trasporti)",
+    "LAPS-Turni/1.8.1 (tariffario trasporti)",
 )
 TRANSPORT_ORIGIN_LAT = float(os.getenv("TRANSPORT_ORIGIN_LAT", "39.9283"))
 TRANSPORT_ORIGIN_LON = float(os.getenv("TRANSPORT_ORIGIN_LON", "8.5320"))
@@ -2180,6 +2180,7 @@ async def mark_all_read(user_id: str, current_user: dict = Depends(get_current_u
 async def list_transport_rates(_: dict = Depends(get_current_user)):
     return {
         "origin": "Cabras",
+        "updated_at": "2026-07-08",
         "rates": TRANSPORT_RATES,
         "rules": {
             "andata": "70 € + 1,10 €/km fino a 100 km + 0,90 €/km oltre 100 km",
