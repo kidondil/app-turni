@@ -14,6 +14,7 @@ type Leave = {
   user_name: string;
   start_date: string;
   end_date: string;
+  absence_type?: "Ferie" | "Permesso";
   reason?: string;
   status: string;
   created_at: string;
@@ -67,7 +68,7 @@ export default function LeavesScreen() {
   const respondLeave = async (id: string, action: "approve" | "reject") => {
     try {
       await apiRequest(`/api/leaves/${id}?action=${action}`, { method: "PATCH" });
-      Alert.alert("Successo", `Ferie ${action === "approve" ? "approvate" : "rifiutate"}`);
+      Alert.alert("Successo", `Richiesta ${action === "approve" ? "approvata" : "rifiutata"}`);
       load();
     } catch (e) {
       Alert.alert("Errore", apiErrorMessage(e));
@@ -76,7 +77,7 @@ export default function LeavesScreen() {
 
   const cancelLeave = (leave: Leave) => {
     Alert.alert(
-      "Annulla ferie",
+      "Annulla richiesta",
       `Vuoi annullare la richiesta dal ${formatIsoDateIt(leave.start_date)} al ${formatIsoDateIt(leave.end_date)}?`,
       [
         { text: "No", style: "cancel" },
@@ -86,7 +87,7 @@ export default function LeavesScreen() {
           onPress: async () => {
             try {
               await apiRequest(`/api/leaves/${leave.id}/cancel`, { method: "PATCH" });
-              Alert.alert("Ferie annullate", "La richiesta è stata annullata correttamente");
+              Alert.alert("Richiesta annullata", "La richiesta è stata annullata correttamente");
               load();
             } catch (e) {
               Alert.alert("Errore", apiErrorMessage(e, "Impossibile annullare le ferie"));
@@ -166,6 +167,7 @@ export default function LeavesScreen() {
               <View style={styles.cardHeader}>
                 <View style={{ flex: 1 }}>
                   {tab !== "mine" && <Text style={styles.cardUser}>{l.user_name}</Text>}
+                  <Text style={styles.absenceType}>{l.absence_type || "Ferie"}</Text>
                   <Text style={styles.cardDates}>{formatIsoDateIt(l.start_date)} → {formatIsoDateIt(l.end_date)}</Text>
                 </View>
                 <View style={[styles.statusPill, statusStyle(l.status).box]}>
@@ -230,6 +232,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 10 },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   cardUser: { fontSize: 14, fontWeight: "700", color: colors.textPrimary },
+  absenceType: { fontSize: 10, fontWeight: "800", color: colors.textPrimary, textTransform: "uppercase", marginTop: 2 },
   cardDates: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   cardReason: { fontSize: 13, color: colors.textSecondary, fontStyle: "italic", marginTop: 8 },
   cancelBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.danger, marginTop: 12 },

@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+import httpx
 import os
 import io
 import csv
@@ -21,6 +22,14 @@ import calendar as cal_mod
 from contextlib import asynccontextmanager
 from zoneinfo import ZoneInfo
 
+from leave_balance import calculate_leave_balance
+from transport_rates import (
+    TRANSPORT_RATES,
+    TRANSPORT_RATES_BY_NAME,
+    calculate_transport_prices,
+    normalize_town_name,
+)
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
@@ -38,7 +47,7 @@ async def lifespan(_: FastAPI):
     client.close()
 
 
-app = FastAPI(title="LAPS Turni API", version="1.7.0", lifespan=lifespan)
+app = FastAPI(title="LAPS Turni API", version="1.8.0", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 ROLE_AUTISTA = "Autista"
@@ -60,6 +69,14 @@ SESSION_DAYS = 365
 PIN_HASH_ITERATIONS = 210_000
 PIN_PEPPER = os.getenv("PIN_PEPPER", "")
 PIN_BOOTSTRAP_KEY = os.getenv("PIN_BOOTSTRAP_KEY", "")
+NOMINATIM_BASE_URL = os.getenv("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org").rstrip("/")
+OSRM_BASE_URL = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org").rstrip("/")
+GEOCODING_USER_AGENT = os.getenv(
+    "GEOCODING_USER_AGENT",
+    "LAPS-Turni/1.8.0 (tariffario trasporti)",
+)
+TRANSPORT_ORIGIN_LAT = float(os.getenv("TRANSPORT_ORIGIN_LAT", "39.9283"))
+TRANSPORT_ORIGIN_LON = float(os.getenv("TRANSPORT_ORIGIN_LON", "8.5320"))
 
 MONTH_NAMES_IT = {
     1: "gennaio",
@@ -194,6 +211,7 @@ class LeaveRequest(BaseModel):
     user_name: str
     start_date: str
     end_date: str
+    absence_type: Literal["Ferie", "Permesso"] = "Ferie"
     reason: Optional[str] = None
     status: str  # pending/approved/rejected/cancelled
     created_at: str
@@ -203,6 +221,7 @@ class LeaveCreate(BaseModel):
     user_id: str
     start_date: str
     end_date: str
+    absence_type: Literal["Ferie", "Permesso"] = "Ferie"
     reason: Optional[str] = None
 
     @field_validator("start_date", "end_date")
@@ -247,6 +266,22 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     role: Optional[str] = None
+
+
+class LeaveBalanceUpdate(BaseModel):
+    initial_balance: float = Field(ge=-365, le=1000)
+    balance_date: str
+
+    @field_validator("balance_date")
+    @classmethod
+    def validate_balance_date(cls, value: str) -> str:
+        try:
+            parsed = date.fromisoformat(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("La data deve essere nel formato AAAA-MM-GG") from exc
+        if parsed.isoformat() != value:
+            raise ValueError("La data deve essere nel formato AAAA-MM-GG")
+        return value
 
 
 class SetupMember(BaseModel):
@@ -525,6 +560,88 @@ async def create_notification(
     n_type: str,
 ):
     await create_notifications([user_id], title, body, n_type)
+
+
+async def estimate_road_distance_from_cabras(town: str) -> dict:
+    """Geocode a Sardinian town and return driving distance, with Mongo caching."""
+    query_key = normalize_town_name(town)
+    cached = await db.transport_estimates.find_one({"query_key": query_key}, {"_id": 0})
+    if cached:
+        return cached
+
+    headers = {
+        "User-Agent": GEOCODING_USER_AGENT,
+        "Accept-Language": "it",
+    }
+    geocode_params = {
+        "q": f"{town}, Sardegna, Italia",
+        "format": "jsonv2",
+        "countrycodes": "it",
+        "limit": 5,
+        "addressdetails": 1,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers) as http:
+            geocode_response = await http.get(
+                f"{NOMINATIM_BASE_URL}/search",
+                params=geocode_params,
+            )
+            geocode_response.raise_for_status()
+            candidates = geocode_response.json()
+            if not candidates:
+                raise HTTPException(404, "Località non trovata. Prova a specificare anche la provincia")
+            destination = next(
+                (
+                    item for item in candidates
+                    if "sardegna" in item.get("display_name", "").casefold()
+                ),
+                candidates[0],
+            )
+            destination_lat = float(destination["lat"])
+            destination_lon = float(destination["lon"])
+            route_response = await http.get(
+                (
+                    f"{OSRM_BASE_URL}/route/v1/driving/"
+                    f"{TRANSPORT_ORIGIN_LON},{TRANSPORT_ORIGIN_LAT};"
+                    f"{destination_lon},{destination_lat}"
+                ),
+                params={"overview": "false", "steps": "false"},
+            )
+            route_response.raise_for_status()
+            route_payload = route_response.json()
+    except HTTPException:
+        raise
+    except (httpx.HTTPError, TypeError, ValueError, KeyError) as exc:
+        logging.warning("Stima trasporto non disponibile per %s: %s", town, exc)
+        raise HTTPException(
+            503,
+            "Calcolo automatico temporaneamente non disponibile. Inserisci i chilometri manualmente",
+        ) from exc
+
+    if route_payload.get("code") != "Ok" or not route_payload.get("routes"):
+        raise HTTPException(
+            404,
+            "Non è stato possibile calcolare un percorso stradale. Inserisci i chilometri manualmente",
+        )
+    distance_meters = route_payload["routes"][0].get("distance")
+    if not isinstance(distance_meters, (int, float)):
+        raise HTTPException(503, "Il servizio cartografico non ha restituito una distanza valida")
+    road_km = int(distance_meters / 1000 + 0.5)
+    result = {
+        "query_key": query_key,
+        "requested_town": town.strip(),
+        "display_name": destination.get("display_name", town.strip()),
+        "latitude": destination_lat,
+        "longitude": destination_lon,
+        "km": road_km,
+        "created_at": now_iso(),
+    }
+    await db.transport_estimates.update_one(
+        {"query_key": query_key},
+        {"$set": result},
+        upsert=True,
+    )
+    return result
 
 
 async def ensure_unique_user_name(name: str, exclude_user_id: Optional[str] = None):
@@ -1780,6 +1897,70 @@ async def respond_swap(
 
 
 # ===== LEAVES =====
+@api_router.get("/leave-balances")
+async def list_leave_balances(_: dict = Depends(require_admin)):
+    users = await db.users.find(
+        {"role": {"$in": list(OPERATIONAL_ROLES)}},
+        {"_id": 0, "pin_hash": 0},
+    ).sort("name", 1).to_list(200)
+    leaves = await db.leaves.find(
+        {"status": "approved"},
+        {"_id": 0},
+    ).to_list(2000)
+    leaves_by_user = defaultdict(list)
+    for leave in leaves:
+        leaves_by_user[leave["user_id"]].append(leave)
+    today = today_italy()
+    return [
+        {
+            "user_id": user["id"],
+            "user_name": user["name"],
+            "role": user["role"],
+            **calculate_leave_balance(
+                user,
+                leaves_by_user.get(user["id"], []),
+                as_of=today,
+            ),
+        }
+        for user in users
+    ]
+
+
+@api_router.put("/leave-balances/{user_id}")
+async def update_leave_balance(
+    user_id: str,
+    payload: LeaveBalanceUpdate,
+    _: dict = Depends(require_admin),
+):
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(404, "Utente non trovato")
+    if user.get("role") == ROLE_VOLONTARIO:
+        raise HTTPException(400, "I volontari non maturano ferie nell'app")
+    if payload.balance_date > today_italy().isoformat():
+        raise HTTPException(400, "La data del saldo non può essere futura")
+    await db.users.update_one(
+        {"id": user_id},
+        {
+            "$set": {
+                "leave_initial_balance": payload.initial_balance,
+                "leave_balance_date": payload.balance_date,
+            }
+        },
+    )
+    updated_user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    leaves = await db.leaves.find(
+        {"user_id": user_id, "status": "approved"},
+        {"_id": 0},
+    ).to_list(500)
+    return {
+        "user_id": user_id,
+        "user_name": updated_user["name"],
+        "role": updated_user["role"],
+        **calculate_leave_balance(updated_user, leaves, as_of=today_italy()),
+    }
+
+
 @api_router.get("/leaves", response_model=List[LeaveRequest])
 async def list_leaves(
     user_id: Optional[str] = None,
@@ -1848,6 +2029,7 @@ async def create_leave(
         "user_name": user["name"],
         "start_date": payload.start_date,
         "end_date": payload.end_date,
+        "absence_type": payload.absence_type,
         "reason": payload.reason,
         "status": "pending",
         "created_at": now_iso(),
@@ -1860,8 +2042,8 @@ async def create_leave(
     same_role_ids = [member["id"] for member in same_role]
     await create_notifications(
         same_role_ids,
-        "Richiesta ferie da collega",
-        f"{user['name']} ha richiesto ferie dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
+        f"Richiesta {payload.absence_type.casefold()} da collega",
+        f"{user['name']} ha richiesto {payload.absence_type.casefold()} dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
         "leave",
     )
     notified_ids.update(same_role_ids)
@@ -1872,8 +2054,8 @@ async def create_leave(
             continue
         await create_notification(
             adm["id"],
-            "Richiesta ferie da approvare",
-            f"{user['name']} ({user['role']}) ha richiesto ferie dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
+            f"Richiesta {payload.absence_type.casefold()} da approvare",
+            f"{user['name']} ({user['role']}) ha richiesto {payload.absence_type.casefold()} dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
             "leave",
         )
     return LeaveRequest(**leave)
@@ -1908,7 +2090,7 @@ async def respond_leave(
     await db.leaves.update_one({"id": leave_id}, {"$set": {"status": new_status}})
     await create_notification(
         leave["user_id"],
-        f"Ferie {('approvate' if action == 'approve' else 'rifiutate')}",
+        f"Richiesta {('approvata' if action == 'approve' else 'rifiutata')}",
         f"La tua richiesta dal {format_iso_date_it(leave['start_date'])} al {format_iso_date_it(leave['end_date'])} è stata {('approvata' if action == 'approve' else 'rifiutata')}",
         "leave",
     )
@@ -1937,6 +2119,7 @@ async def cancel_leave(
 
     owner = await db.users.find_one({"id": leave["user_id"]}, {"_id": 0})
     if owner:
+        absence_label = leave.get("absence_type", "Ferie").casefold()
         same_role = await db.users.find(
             {"role": owner["role"], "id": {"$ne": owner["id"]}},
             {"_id": 0, "id": 1},
@@ -1948,14 +2131,14 @@ async def cancel_leave(
         audience = [member["id"] for member in [*same_role, *admins]]
         await create_notifications(
             audience,
-            "Ferie annullate",
-            f"{owner['name']} ha annullato le ferie dal {format_iso_date_it(leave['start_date'])} al {format_iso_date_it(leave['end_date'])}",
+            "Assenza annullata",
+            f"{owner['name']} ha annullato la richiesta di {absence_label} dal {format_iso_date_it(leave['start_date'])} al {format_iso_date_it(leave['end_date'])}",
             "leave",
         )
         if current_user["id"] != owner["id"]:
             await create_notification(
                 owner["id"],
-                "Ferie annullate dall'amministratore",
+                "Assenza annullata dall'amministratore",
                 f"La richiesta dal {format_iso_date_it(leave['start_date'])} al {format_iso_date_it(leave['end_date'])} è stata annullata",
                 "leave",
             )
@@ -1992,6 +2175,69 @@ async def mark_all_read(user_id: str, current_user: dict = Depends(get_current_u
     return {"ok": True}
 
 
+# ===== TRANSPORT RATES =====
+@api_router.get("/transport-rates")
+async def list_transport_rates(_: dict = Depends(get_current_user)):
+    return {
+        "origin": "Cabras",
+        "rates": TRANSPORT_RATES,
+        "rules": {
+            "andata": "70 € + 1,10 €/km fino a 100 km + 0,90 €/km oltre 100 km",
+            "andata_ritorno": "80 € + 1,60 €/km fino a 100 km + 1,00 €/km oltre 100 km",
+            "visita_extra": 20,
+            "rounding": 10,
+        },
+    }
+
+
+@api_router.get("/transport-rates/estimate")
+async def estimate_transport_rate(
+    town: Optional[str] = None,
+    km: Optional[float] = None,
+    _: dict = Depends(get_current_user),
+):
+    clean_town = (town or "").strip()
+    if not clean_town and km is None:
+        raise HTTPException(400, "Inserisci una località oppure i chilometri")
+    if clean_town and not 2 <= len(clean_town) <= 120:
+        raise HTTPException(400, "Inserisci un nome di località valido")
+
+    listed_rate = TRANSPORT_RATES_BY_NAME.get(normalize_town_name(clean_town)) if clean_town else None
+    if listed_rate:
+        return {
+            "source": "tariffario",
+            "official": True,
+            "requested_town": clean_town,
+            "display_name": listed_rate["paese"],
+            **listed_rate,
+        }
+
+    if km is not None:
+        try:
+            prices = calculate_transport_prices(km)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {
+            "source": "manuale",
+            "official": False,
+            "requested_town": clean_town or "Località non in elenco",
+            "display_name": clean_town or "Distanza inserita manualmente",
+            "km": round(km, 1),
+            **prices,
+        }
+
+    distance = await estimate_road_distance_from_cabras(clean_town)
+    prices = calculate_transport_prices(distance["km"])
+    return {
+        "source": "openstreetmap",
+        "official": False,
+        "requested_town": clean_town,
+        "display_name": distance["display_name"],
+        "km": distance["km"],
+        **prices,
+    }
+
+
 # ===== STATS =====
 @api_router.get("/stats/{user_id}")
 async def user_stats(
@@ -2000,6 +2246,9 @@ async def user_stats(
     current_user: dict = Depends(get_current_user),
 ):
     ensure_self_or_admin(current_user, user_id)
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(404, "Utente non trovato")
     query = {"user_id": user_id}
     if year:
         query["date"] = {"$regex": f"^{year:04d}"}
@@ -2031,11 +2280,24 @@ async def user_stats(
         except Exception:
             pass
 
+    leave_balance = {"configured": False, "monthly_accrual": 2.5}
+    if user.get("role") != ROLE_VOLONTARIO:
+        approved_leaves = await db.leaves.find(
+            {"user_id": user_id, "status": "approved"},
+            {"_id": 0},
+        ).to_list(500)
+        leave_balance = calculate_leave_balance(
+            user,
+            approved_leaves,
+            as_of=today_italy(),
+        )
+
     return {
         "total_shifts": len(shifts),
         "by_type": by_type,
         "total_hours": total_hours,
         "holidays_worked": holidays_worked,
+        "leave_balance": leave_balance,
     }
 
 

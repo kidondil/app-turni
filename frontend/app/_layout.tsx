@@ -18,7 +18,9 @@ export default function RootLayout() {
           <Stack.Screen name="change-pin" />
           <Stack.Screen name="admin-users" />
           <Stack.Screen name="admin-settings" />
+          <Stack.Screen name="admin-leave-balances" />
           <Stack.Screen name="notifications" />
+          <Stack.Screen name="transport-rates" />
           <Stack.Screen name="generate-shifts" />
           <Stack.Screen name="import-shifts" />
           <Stack.Screen name="(tabs)" />

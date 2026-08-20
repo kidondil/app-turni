@@ -22,6 +22,16 @@ Dal Profilo, l'amministratore può inoltre aprire **Importa turni del mese** e c
 
 Le date sono mostrate nel formato italiano `GG/MM/AAAA`. Per le ferie si può digitare il periodo oppure aprire il calendario e selezionare direttamente il primo e l'ultimo giorno. Ogni operatore può annullare una propria richiesta di ferie ancora attiva, anche se già approvata, purché il periodo non sia concluso. Può inoltre annullare uno scambio inviato finché è ancora in attesa; le richieste restano nello storico con lo stato **Annullata** o **Annullato**.
 
+## Tariffario trasporti
+
+Dal Profilo ogni utente può aprire **Tariffario trasporti**, cercare una delle 66 località e vedere gli importi di Andata, Andata/Ritorno e Visita. I dati incorporati nell'app provengono dal tariffario corretto con origine Cabras; la visita corrisponde all'andata/ritorno più 20 €.
+
+Per una località assente dall'elenco, il backend cerca il paese in Sardegna con Nominatim/OpenStreetMap, calcola la distanza stradale da Cabras tramite OSRM e applica le stesse regole proporzionali del tariffario. Il risultato è sempre indicato come **Stima**, distinto dagli importi ufficiali. Se il servizio cartografico non è disponibile si possono inserire manualmente i chilometri. Le ricerche riuscite vengono memorizzate in MongoDB per ridurre le richieste ai servizi esterni.
+
+## Saldo ferie
+
+Nel Profilo degli operatori compare la statistica **Ferie residue**. Da **Gestisci saldi ferie** un amministratore inserisce per ciascun operatore il saldo iniziale e la data dalla quale è valido. L'app aggiunge 2,5 giorni a ogni cambio di mese, scala in giorni di calendario le ferie approvate già trascorse e mostra separatamente quelle future programmate. La nuova richiesta distingue **Ferie** e **Permesso**: i permessi non vengono scalati dal saldo ferie. Richieste rifiutate o annullate non incidono sul saldo. I saldi dei colleghi non sono esposti agli altri utenti; l'elenco completo è riservato agli amministratori. I volontari restano esclusi.
+
 ## Notifiche
 
 L'app conserva uno storico interno delle notifiche in una schermata dedicata, accessibile dalla campanella. Ogni avviso ha un comando grande per segnarlo come letto ed è disponibile anche **Segna tutte come lette**:
@@ -53,6 +63,8 @@ Configurare in `backend/.env`:
 - `CORS_ORIGINS` con gli indirizzi autorizzati del frontend;
 - `PIN_PEPPER` con una stringa casuale lunga, da conservare stabilmente;
 - `PIN_BOOTSTRAP_KEY` con un secondo codice casuale, necessario soltanto per migrare un'installazione già esistente.
+- facoltativamente `GEOCODING_USER_AGENT` con un identificativo dell'app e un contatto; `NOMINATIM_BASE_URL` e `OSRM_BASE_URL` permettono di cambiare i servizi cartografici senza aggiornare l'app;
+- facoltativamente `TRANSPORT_ORIGIN_LAT` e `TRANSPORT_ORIGIN_LON` per correggere il punto di partenza di Cabras usato nel calcolo stradale.
 
 Per generare due valori casuali distinti:
 

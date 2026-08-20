@@ -777,6 +777,75 @@ def test_multiple_admins_can_be_added_and_removed(api, users):
     assert last_admin.status_code == 400
 
 
+def test_transport_tariff_and_manual_estimate(api, users):
+    tariff = api.get("/api/transport-rates")
+    assert tariff.status_code == 200, tariff.text
+    assert tariff.json()["origin"] == "Cabras"
+    assert len(tariff.json()["rates"]) == 66
+    cagliari = next(rate for rate in tariff.json()["rates"] if rate["paese"] == "CAGLIARI")
+    assert cagliari == {
+        "paese": "CAGLIARI",
+        "km": 100,
+        "andata": 180,
+        "andata_ritorno": 240,
+        "visita": 260,
+    }
+
+    official = api.get("/api/transport-rates/estimate", params={"town": "cagliari"})
+    assert official.status_code == 200
+    assert official.json()["official"] is True
+    assert official.json()["andata_ritorno"] == 240
+
+    estimated = api.get(
+        "/api/transport-rates/estimate",
+        params={"town": "Località di prova", "km": 92},
+    )
+    assert estimated.status_code == 200, estimated.text
+    assert estimated.json()["source"] == "manuale"
+    assert estimated.json()["official"] is False
+    assert estimated.json()["andata"] == 170
+    assert estimated.json()["andata_ritorno"] == 230
+    assert estimated.json()["visita"] == 250
+
+
+def test_leave_balance_accrual_and_admin_configuration(api, users):
+    summary = server.calculate_leave_balance(
+        {
+            "leave_initial_balance": 20,
+            "leave_balance_date": "2030-01-01",
+        },
+        [
+            {"status": "approved", "start_date": "2030-01-10", "end_date": "2030-01-12"},
+            {"status": "approved", "start_date": "2030-04-02", "end_date": "2030-04-03"},
+            {"status": "approved", "absence_type": "Permesso", "start_date": "2030-02-01", "end_date": "2030-02-05"},
+            {"status": "cancelled", "start_date": "2030-02-01", "end_date": "2030-02-10"},
+        ],
+        as_of=date(2030, 3, 15),
+    )
+    assert summary["accrued"] == 5
+    assert summary["used"] == 3
+    assert summary["scheduled"] == 2
+    assert summary["remaining"] == 22
+    assert summary["available_after_scheduled"] == 20
+
+    user = by_role(users, "Soccorritore")[0]
+    today = server.today_italy().isoformat()
+    configured = api.put(
+        f"/api/leave-balances/{user['id']}",
+        json={"initial_balance": 18.5, "balance_date": today},
+    )
+    assert configured.status_code == 200, configured.text
+    assert configured.json()["configured"] is True
+    assert configured.json()["remaining"] == 18.5
+
+    stats = api.get(f"/api/stats/{user['id']}")
+    assert stats.status_code == 200
+    assert stats.json()["leave_balance"]["initial_balance"] == 18.5
+
+    member_headers = login_headers(api, by_role(users, "Autista")[1], "1102")
+    assert api.get("/api/leave-balances", headers=member_headers).status_code == 403
+
+
 def test_setup_accepts_multiple_admins(api):
     response = api.post(
         "/api/setup",

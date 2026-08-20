@@ -13,9 +13,21 @@ type Stats = {
   by_type: { Mattina: number; Pomeriggio: number; Trasporti: number; Notte: number };
   total_hours: number;
   holidays_worked: { date: string; name: string; shift: string }[];
+  leave_balance: {
+    configured: boolean;
+    monthly_accrual: number;
+    initial_balance?: number;
+    balance_date?: string;
+    accrued?: number;
+    used?: number;
+    scheduled?: number;
+    remaining?: number;
+    available_after_scheduled?: number;
+    as_of?: string;
+  };
 };
 
-type Leave = { id: string; user_id: string; user_name: string; start_date: string; end_date: string; reason?: string; status: string };
+type Leave = { id: string; user_id: string; user_name: string; start_date: string; end_date: string; absence_type?: "Ferie" | "Permesso"; reason?: string; status: string };
 
 export default function ProfileScreen() {
   const { currentUser, clearUser } = useUser();
@@ -66,7 +78,7 @@ export default function ProfileScreen() {
   const respondLeave = async (id: string, action: "approve" | "reject") => {
     try {
       await apiRequest(`/api/leaves/${id}?action=${action}`, { method: "PATCH" });
-      Alert.alert("Successo", `Ferie ${action === "approve" ? "approvate" : "rifiutate"}`);
+      Alert.alert("Successo", `Richiesta ${action === "approve" ? "approvata" : "rifiutata"}`);
       load();
     } catch (e) {
       Alert.alert("Errore", apiErrorMessage(e));
@@ -75,7 +87,7 @@ export default function ProfileScreen() {
 
   const cancelLeave = (leave: Leave) => {
     Alert.alert(
-      "Annulla ferie",
+      "Annulla richiesta",
       `Vuoi annullare la richiesta dal ${formatIsoDateIt(leave.start_date)} al ${formatIsoDateIt(leave.end_date)}?`,
       [
         { text: "No", style: "cancel" },
@@ -85,7 +97,7 @@ export default function ProfileScreen() {
           onPress: async () => {
             try {
               await apiRequest(`/api/leaves/${leave.id}/cancel`, { method: "PATCH" });
-              Alert.alert("Ferie annullate", "La richiesta è stata annullata correttamente");
+              Alert.alert("Richiesta annullata", "La richiesta è stata annullata correttamente");
               load();
             } catch (error) {
               Alert.alert("Errore", apiErrorMessage(error, "Impossibile annullare le ferie"));
@@ -102,6 +114,8 @@ export default function ProfileScreen() {
   }
 
   const initials = currentUser.name.split(" ").map((n) => n[0]).slice(0, 2).join("");
+  const leaveBalance = stats?.leave_balance;
+  const formatDays = (value?: number) => (value || 0).toLocaleString("it-IT", { maximumFractionDigits: 1 });
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -139,6 +153,48 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>Festività</Text>
           </View>
         </View>
+
+        {currentUser.role !== "Volontario" && (
+          <View style={styles.leaveBalanceCard}>
+            <View style={styles.leaveBalanceHeading}>
+              <View style={styles.leaveBalanceIcon}>
+                <Ionicons name="sunny-outline" size={25} color="#A16207" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.leaveBalanceTitle}>Ferie residue</Text>
+                <Text style={styles.leaveBalanceSubtitle}>+2,5 giorni maturati ogni mese</Text>
+              </View>
+              {leaveBalance?.configured && (
+                <Text style={styles.leaveBalanceNumber}>{formatDays(leaveBalance.remaining)}</Text>
+              )}
+            </View>
+            {leaveBalance?.configured ? (
+              <>
+                <View style={styles.leaveBalanceDetails}>
+                  <View style={styles.leaveBalanceDetail}>
+                    <Text style={styles.leaveDetailValue}>+{formatDays(leaveBalance.accrued)}</Text>
+                    <Text style={styles.leaveDetailLabel}>Maturate</Text>
+                  </View>
+                  <View style={styles.leaveBalanceDetail}>
+                    <Text style={styles.leaveDetailValue}>{formatDays(leaveBalance.used)}</Text>
+                    <Text style={styles.leaveDetailLabel}>Godute</Text>
+                  </View>
+                  <View style={styles.leaveBalanceDetail}>
+                    <Text style={styles.leaveDetailValue}>{formatDays(leaveBalance.scheduled)}</Text>
+                    <Text style={styles.leaveDetailLabel}>Programmate</Text>
+                  </View>
+                </View>
+                <Text style={styles.leaveBalanceReference}>
+                  Saldo iniziale {formatDays(leaveBalance.initial_balance)} al {formatIsoDateIt(leaveBalance.balance_date)} · Disponibili dopo le ferie future: {formatDays(leaveBalance.available_after_scheduled)}
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.leaveBalanceMissing}>
+                Il saldo iniziale non è ancora stato inserito dall&apos;amministratore.
+              </Text>
+            )}
+          </View>
+        )}
 
         <View style={styles.statsRow}>
           <View style={[styles.miniStat, { backgroundColor: "#FEF9C3" }]}>
@@ -178,6 +234,11 @@ export default function ProfileScreen() {
 
         {/* Actions */}
         <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Azioni</Text>
+        <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/transport-rates")} testID="action-transport-rates">
+          <Ionicons name="car-outline" size={22} color={colors.textPrimary} />
+          <Text style={styles.actionText}>Tariffario trasporti</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </TouchableOpacity>
         {currentUser.role !== "Volontario" && (
           <>
             <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/leave-new")} testID="action-leave">
@@ -243,12 +304,22 @@ export default function ProfileScreen() {
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </TouchableOpacity>
 
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={() => router.push("/admin-leave-balances")}
+              testID="manage-leave-balances-btn"
+            >
+              <Ionicons name="wallet-outline" size={22} color={colors.textPrimary} />
+              <Text style={styles.actionText}>Gestisci saldi ferie</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+
             {pendingLeaves.length > 0 && (
               <>
                 <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Ferie da approvare ({pendingLeaves.length})</Text>
                 {pendingLeaves.map((l) => (
                   <View key={l.id} style={styles.leaveCard}>
-                    <Text style={styles.leaveUser}>{l.user_name}</Text>
+                    <Text style={styles.leaveUser}>{l.user_name} · {l.absence_type || "Ferie"}</Text>
                     <Text style={styles.leaveDates}>{formatIsoDateIt(l.start_date)} → {formatIsoDateIt(l.end_date)}</Text>
                     {l.reason && <Text style={styles.leaveReason}>“{l.reason}”</Text>}
                     <View style={styles.leaveActions}>
@@ -273,7 +344,10 @@ export default function ProfileScreen() {
             {myLeaves.map((l) => (
               <View key={l.id} style={styles.leaveCard}>
                 <View style={styles.leaveTop}>
-                  <Text style={styles.leaveDates}>{formatIsoDateIt(l.start_date)} → {formatIsoDateIt(l.end_date)}</Text>
+                  <View>
+                    <Text style={styles.absenceLabel}>{l.absence_type || "Ferie"}</Text>
+                    <Text style={styles.leaveDates}>{formatIsoDateIt(l.start_date)} → {formatIsoDateIt(l.end_date)}</Text>
+                  </View>
                   <View style={[styles.statusPill, leaveStatusStyle(l.status).box]}>
                     <Text style={[styles.statusPillText, leaveStatusStyle(l.status).text]}>
                       {leaveStatusLabel(l.status)}
@@ -326,6 +400,18 @@ const styles = StyleSheet.create({
   miniStat: { flex: 1, padding: 12, borderRadius: 12, alignItems: "center" },
   miniNumber: { fontSize: 18, fontWeight: "700" },
   miniLabel: { fontSize: 10, fontWeight: "600", marginTop: 2 },
+  leaveBalanceCard: { padding: 15, borderRadius: 16, borderWidth: 1, borderColor: "#FDE68A", backgroundColor: "#FFFBEB", marginBottom: 10 },
+  leaveBalanceHeading: { flexDirection: "row", alignItems: "center", gap: 10 },
+  leaveBalanceIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#FEF3C7" },
+  leaveBalanceTitle: { fontSize: 15, fontWeight: "800", color: colors.textPrimary },
+  leaveBalanceSubtitle: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+  leaveBalanceNumber: { fontSize: 26, fontWeight: "800", color: "#854D0E" },
+  leaveBalanceDetails: { flexDirection: "row", marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#FDE68A" },
+  leaveBalanceDetail: { flex: 1, alignItems: "center" },
+  leaveDetailValue: { fontSize: 16, fontWeight: "800", color: colors.textPrimary },
+  leaveDetailLabel: { fontSize: 10, fontWeight: "600", color: colors.textSecondary, marginTop: 2 },
+  leaveBalanceReference: { fontSize: 10, lineHeight: 15, color: colors.textSecondary, textAlign: "center", marginTop: 11 },
+  leaveBalanceMissing: { fontSize: 12, lineHeight: 17, color: "#A16207", marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#FDE68A" },
   card: { backgroundColor: colors.surface, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
   holidayRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, gap: 8 },
   holidayBorder: { borderTopWidth: 1, borderTopColor: colors.border },
@@ -338,6 +424,7 @@ const styles = StyleSheet.create({
   leaveUser: { fontSize: 14, fontWeight: "700", color: colors.textPrimary },
   leaveDates: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   leaveReason: { fontSize: 12, color: colors.textSecondary, fontStyle: "italic", marginTop: 6 },
+  absenceLabel: { fontSize: 11, fontWeight: "800", color: colors.textPrimary, textTransform: "uppercase" },
   leaveTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   statusPill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
   statusPillText: { fontSize: 11, fontWeight: "700" },

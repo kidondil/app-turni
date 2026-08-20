@@ -63,6 +63,17 @@
 ##         -agent: "main"  # or "testing" or "user"
 ##         -comment: "Detailed comment about status"
 ##
+##   - task: "Tariffario trasporti e saldo ferie"
+##     implemented: true
+##     working: "NA"
+##     file: "backend/server.py"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Aggiunti tariffario ufficiale, stima stradale con cache/ripiego manuale e saldo ferie con maturazione mensile; 2 nuovi test API/puri da eseguire localmente."
 ## metadata:
 ##   created_by: "main_agent"
 ##   version: "1.0"
@@ -218,12 +229,12 @@
 ##         comment: "Aggiunti login PIN, migrazione dati esistenti, cambio PIN personale e reset PIN da parte dell’admin; lint e TypeScript superati."
 ## metadata:
 ##   created_by: "main_agent"
-##   version: "1.5.1"
-##   test_sequence: 8
+##   version: "1.8.0"
+##   test_sequence: 9
 ##   run_ui: false
 ## test_plan:
 ##   current_focus:
-##     - "Trasporti e importazione mensile"
+##     - "Tariffario trasporti e saldo ferie"
 ##   stuck_tasks: []
 ##   test_all: true
 ##   test_priority: "high_first"
@@ -240,3 +251,5 @@
 ##     message: "Versione 1.5: typecheck, compilazione Python ed export web superati. Aggiunti 2 test backend (17 totali) per Trasporti/importazione; l'ambiente corrente non include FastAPI/pytest, quindi la suite va rilanciata localmente con requirements-dev.txt."
 ##   - agent: "main"
 ##     message: "Versione 1.5.1: corretto il pulsante Esporta affinché scarichi il CSV con la sessione autenticata. Typecheck, lint ed export web superati."
+##   - agent: "main"
+##     message: "Versione 1.8.0: typecheck, lint, compilazione Python, controlli puri ed export web con 27 route superati. La suite backend comprende ora 22 test e va rilanciata localmente perché questo ambiente non include FastAPI/pytest."

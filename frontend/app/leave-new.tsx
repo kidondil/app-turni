@@ -15,6 +15,7 @@ export default function LeaveNewScreen() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
+  const [absenceType, setAbsenceType] = useState<"Ferie" | "Permesso">("Ferie");
   const [submitting, setSubmitting] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
@@ -39,6 +40,7 @@ export default function LeaveNewScreen() {
           user_id: currentUser.id,
           start_date: startIso,
           end_date: endIso,
+          absence_type: absenceType,
           reason,
         }),
       });
@@ -61,11 +63,26 @@ export default function LeaveNewScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="close" size={26} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.title}>Richiesta ferie</Text>
+          <Text style={styles.title}>Nuova richiesta</Text>
           <View style={{ width: 40 }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
+          <Text style={styles.label}>Tipo di assenza</Text>
+          <View style={styles.typeRow}>
+            {(["Ferie", "Permesso"] as const).map((type) => (
+              <TouchableOpacity
+                key={type}
+                style={[styles.typeButton, absenceType === type && styles.typeButtonActive]}
+                onPress={() => setAbsenceType(type)}
+                testID={`absence-${type.toLowerCase()}`}
+              >
+                <Ionicons name={type === "Ferie" ? "airplane-outline" : "time-outline"} size={20} color={absenceType === type ? colors.primaryFg : colors.textSecondary} />
+                <Text style={[styles.typeText, absenceType === type && styles.typeTextActive]}>{type}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <Text style={styles.label}>Periodo richiesto</Text>
           <TouchableOpacity style={styles.calendarBtn} onPress={() => setCalendarOpen(true)} testID="open-leave-calendar">
             <View style={styles.calendarIcon}>
@@ -112,7 +129,7 @@ export default function LeaveNewScreen() {
           <Text style={styles.label}>Motivazione (opzionale)</Text>
           <TextInput
             style={[styles.input, { minHeight: 100, textAlignVertical: "top" }]}
-            placeholder="Es: Ferie estive, visita medica..."
+            placeholder={absenceType === "Ferie" ? "Es: ferie estive" : "Es: visita medica"}
             placeholderTextColor={colors.textMuted}
             value={reason}
             onChangeText={setReason}
@@ -152,6 +169,11 @@ const styles = StyleSheet.create({
   title: { flex: 1, textAlign: "center", fontSize: 17, fontWeight: "700", color: colors.textPrimary },
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
   label: { fontSize: 14, fontWeight: "700", color: colors.textPrimary, marginBottom: 8, marginTop: 16 },
+  typeRow: { flexDirection: "row", gap: 10 },
+  typeButton: { flex: 1, minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  typeButtonActive: { borderColor: colors.primaryDark, backgroundColor: colors.primary },
+  typeText: { fontSize: 14, fontWeight: "700", color: colors.textSecondary },
+  typeTextActive: { color: colors.primaryFg },
   calendarBtn: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
   calendarIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
   calendarBtnTitle: { fontSize: 14, fontWeight: "700", color: colors.textPrimary },
