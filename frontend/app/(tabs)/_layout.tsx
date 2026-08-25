@@ -57,7 +57,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="leaves"
         options={{
-          title: "Assenze",
+          title: "Ferie",
           tabBarIcon: LeavesIcon,
           href: isVolunteer ? null : undefined,
         }}

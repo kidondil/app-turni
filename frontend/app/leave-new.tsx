@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors } from "@/src/theme";
@@ -12,10 +12,12 @@ import { formatDateInputIt, formatIsoDateIt, parseDateInputIt } from "@/src/util
 export default function LeaveNewScreen() {
   const { currentUser, users } = useUser();
   const router = useRouter();
+  const { type } = useLocalSearchParams<{ type?: string }>();
+  const sicknessMode = type === "Malattia";
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
-  const [absenceType, setAbsenceType] = useState<"Ferie" | "Permesso" | "Malattia">("Ferie");
+  const [absenceType, setAbsenceType] = useState<"Ferie" | "Permesso" | "Malattia">(sicknessMode ? "Malattia" : "Ferie");
   const [selectedUserId, setSelectedUserId] = useState(currentUser?.id || "");
   const [userPickerOpen, setUserPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -24,6 +26,10 @@ export default function LeaveNewScreen() {
   useEffect(() => {
     if (currentUser && !selectedUserId) setSelectedUserId(currentUser.id);
   }, [currentUser, selectedUserId]);
+
+  useEffect(() => {
+    if (sicknessMode) setAbsenceType("Malattia");
+  }, [sicknessMode]);
 
   const submit = async () => {
     if (!currentUser || !selectedUserId) return;
@@ -71,14 +77,14 @@ export default function LeaveNewScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="close" size={26} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.title}>Nuova richiesta</Text>
+          <Text style={styles.title}>{sicknessMode ? "Registra malattia" : "Nuova richiesta"}</Text>
           <View style={{ width: 40 }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
-          <Text style={styles.label}>Tipo di assenza</Text>
+          <Text style={styles.label}>{sicknessMode ? "Tipologia" : "Tipo di assenza"}</Text>
           <View style={styles.typeRow}>
-            {(["Ferie", "Permesso", "Malattia"] as const).map((type) => (
+            {(sicknessMode ? ["Malattia"] as const : ["Ferie", "Permesso"] as const).map((type) => (
               <TouchableOpacity
                 key={type}
                 style={[styles.typeButton, absenceType === type && styles.typeButtonActive]}
@@ -164,7 +170,7 @@ export default function LeaveNewScreen() {
             disabled={submitting}
             testID="submit-leave"
           >
-            <Text style={styles.submitText}>{submitting ? "Invio..." : "Invia richiesta"}</Text>
+            <Text style={styles.submitText}>{submitting ? "Salvataggio..." : sicknessMode ? "Registra malattia" : "Invia richiesta"}</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>

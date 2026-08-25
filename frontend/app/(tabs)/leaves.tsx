@@ -46,9 +46,9 @@ export default function LeavesScreen() {
         apiRequest<Leave[]>(`/api/leaves?user_id=${currentUser.id}`),
         apiRequest<Leave[]>("/api/leaves"),
       ]);
-      setMyLeaves(mine);
+      setMyLeaves(mine.filter((leave) => leave.absence_type !== "Malattia"));
       // Team = same role colleagues only (excluding self)
-      setTeamLeaves(all.filter((l) => l.user_id !== currentUser.id && isSameRole(l.user_id)));
+      setTeamLeaves(all.filter((l) => l.absence_type !== "Malattia" && l.user_id !== currentUser.id && isSameRole(l.user_id)));
       if (currentUser.is_admin) {
         setPendingLeaves(all.filter((l) => l.status === "pending"));
       }
@@ -110,8 +110,8 @@ export default function LeavesScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Assenze</Text>
-          <Text style={styles.subtitle}>Gestisci le richieste di assenza</Text>
+          <Text style={styles.title}>Ferie & Permessi</Text>
+          <Text style={styles.subtitle}>Gestisci le richieste di ferie e permesso</Text>
         </View>
         <TouchableOpacity style={styles.newBtn} onPress={() => router.push("/leave-new")} testID="new-leave-btn">
           <Ionicons name="add" size={18} color={colors.primaryFg} />

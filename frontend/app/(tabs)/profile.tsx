@@ -34,6 +34,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
   const [myLeaves, setMyLeaves] = useState<Leave[]>([]);
+  const [sicknessLeaves, setSicknessLeaves] = useState<Leave[]>([]);
   const [pendingLeaves, setPendingLeaves] = useState<Leave[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,12 +45,14 @@ export default function ProfileScreen() {
   const load = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const [statsData, leavesData] = await Promise.all([
+      const [statsData, leavesData, allLeaves] = await Promise.all([
         apiRequest<Stats>(`/api/stats/${currentUser.id}?year=${year}`),
         apiRequest<Leave[]>(`/api/leaves?user_id=${currentUser.id}`),
+        currentUser.is_admin ? apiRequest<Leave[]>("/api/leaves") : Promise.resolve([] as Leave[]),
       ]);
       setStats(statsData);
-      setMyLeaves(leavesData);
+      setMyLeaves(leavesData.filter((leave) => leave.absence_type !== "Malattia"));
+      setSicknessLeaves((currentUser.is_admin ? allLeaves : leavesData).filter((leave) => leave.absence_type === "Malattia"));
 
       if (currentUser.is_admin) {
         setPendingLeaves(await apiRequest<Leave[]>("/api/leaves?status=pending"));
@@ -239,6 +242,15 @@ export default function ProfileScreen() {
           <Text style={styles.actionText}>Tariffario trasporti</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionRow}
+          onPress={() => router.push({ pathname: "/leave-new", params: { type: "Malattia" } })}
+          testID="action-sickness"
+        >
+          <Ionicons name="medkit-outline" size={22} color={colors.textPrimary} />
+          <Text style={styles.actionText}>Registra malattia</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </TouchableOpacity>
         {currentUser.role !== "Volontario" && (
           <>
             <TouchableOpacity style={styles.actionRow} onPress={() => router.push("/leave-new")} testID="action-leave">
@@ -334,6 +346,37 @@ export default function ProfileScreen() {
                 ))}
               </>
             )}
+          </>
+        )}
+
+        {/* Sickness is managed separately from holidays */}
+        {sicknessLeaves.length > 0 && (
+          <>
+            <Text style={[styles.sectionTitle, { marginTop: 16 }]}>
+              {currentUser.is_admin ? "Malattie registrate" : "Le mie malattie"}
+            </Text>
+            {sicknessLeaves.map((l) => (
+              <View key={l.id} style={styles.leaveCard}>
+                <View style={styles.leaveTop}>
+                  <View style={{ flex: 1 }}>
+                    {currentUser.is_admin && <Text style={styles.leaveUser}>{l.user_name}</Text>}
+                    <Text style={styles.leaveDates}>{formatIsoDateIt(l.start_date)} → {formatIsoDateIt(l.end_date)}</Text>
+                  </View>
+                  <View style={[styles.statusPill, leaveStatusStyle(l.status).box]}>
+                    <Text style={[styles.statusPillText, leaveStatusStyle(l.status).text]}>
+                      {leaveStatusLabel(l.status)}
+                    </Text>
+                  </View>
+                </View>
+                {l.reason && <Text style={styles.leaveReason}>“{l.reason}”</Text>}
+                {l.status === "approved" && l.end_date >= todayIsoLocal() && (
+                  <TouchableOpacity style={styles.cancelLeaveBtn} onPress={() => cancelLeave(l)}>
+                    <Ionicons name="close-circle-outline" size={17} color={colors.danger} />
+                    <Text style={styles.cancelLeaveText}>Annulla malattia</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
           </>
         )}
 
