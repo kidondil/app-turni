@@ -19,6 +19,7 @@ import secrets
 from datetime import datetime, date, timezone, timedelta
 from collections import defaultdict
 import calendar as cal_mod
+import unicodedata
 from contextlib import asynccontextmanager
 from zoneinfo import ZoneInfo
 
@@ -733,6 +734,29 @@ async def root():
 # ===== SETUP =====
 OPERATIONAL_ROLES = {ROLE_AUTISTA, ROLE_CAPOTURNO, ROLE_SOCCORRITORE}
 VALID_ROLES = {*OPERATIONAL_ROLES, ROLE_VOLONTARIO}
+IMPORT_ROLE_ORDER = (ROLE_AUTISTA, ROLE_CAPOTURNO, ROLE_SOCCORRITORE)
+
+
+def import_role_person_key(value: str) -> str:
+    normalized = unicodedata.normalize("NFD", value or "")
+    without_accents = "".join(
+        character for character in normalized
+        if unicodedata.category(character) != "Mn"
+    )
+    return " ".join(sorted(without_accents.casefold().split()))
+
+
+EXTRA_IMPORT_ROLES = {
+    import_role_person_key("Andrea Caddeo"): {ROLE_SOCCORRITORE},
+    import_role_person_key("Lucia Murtas"): {ROLE_CAPOTURNO},
+}
+
+
+def allowed_import_roles(user: dict) -> set[str]:
+    return {
+        user["role"],
+        *EXTRA_IMPORT_ROLES.get(import_role_person_key(user.get("name", "")), set()),
+    }
 
 
 @api_router.get("/setup/status")
@@ -1287,13 +1311,16 @@ async def import_shift_teams(
     prepared_teams = []
     for team in payload.teams:
         selected = [users_by_id[user_id] for user_id in team.user_ids]
-        selected_by_role = {user["role"]: user for user in selected}
-        if set(selected_by_role) != OPERATIONAL_ROLES:
-            raise HTTPException(
-                400,
-                f"La squadra {team.shift_type} del {format_iso_date_it(team.date)} deve avere "
-                "un Autista, un Capoturno e un Soccorritore",
-            )
+        # The CSV/frontend always sends the three IDs in column order:
+        # Autista, Capoturno, Soccorritore. This preserves the role actually
+        # covered in this shift even when it differs from the user's main group.
+        selected_by_role = dict(zip(IMPORT_ROLE_ORDER, selected))
+        for imported_role, user in selected_by_role.items():
+            if imported_role not in allowed_import_roles(user):
+                raise HTTPException(
+                    400,
+                    f"{user['name']} appartiene al gruppo {user['role']}, non {imported_role}",
+                )
         prepared_teams.append((team, selected_by_role))
 
     # Build the schedule that would exist after the import. Validation happens
@@ -1313,14 +1340,14 @@ async def import_shift_teams(
 
     imported_assignments = []
     for team, selected_by_role in prepared_teams:
-        for role in (ROLE_AUTISTA, ROLE_CAPOTURNO, ROLE_SOCCORRITORE):
+        for role in IMPORT_ROLE_ORDER:
             user = selected_by_role[role]
             imported_assignments.append({
                 "date": team.date,
                 "shift_type": team.shift_type,
                 "user_id": user["id"],
                 "user_name": user["name"],
-                "role": user["role"],
+                "role": role,
             })
 
     approved_leaves = await db.leaves.find(
@@ -1399,7 +1426,7 @@ async def import_shift_teams(
             current_by_role.setdefault(shift.get("role"), shift)
 
         kept_ids = []
-        for role in (ROLE_AUTISTA, ROLE_CAPOTURNO, ROLE_SOCCORRITORE):
+        for role in IMPORT_ROLE_ORDER:
             user = selected_by_role[role]
             current = current_by_role.get(role)
             if current:
@@ -1413,7 +1440,7 @@ async def import_shift_teams(
                         "shift_type": team.shift_type,
                         "user_id": user["id"],
                         "user_name": user["name"],
-                        "role": user["role"],
+                        "role": role,
                     }},
                 )
             else:
@@ -1425,7 +1452,7 @@ async def import_shift_teams(
                     "shift_type": team.shift_type,
                     "user_id": user["id"],
                     "user_name": user["name"],
-                    "role": user["role"],
+                    "role": role,
                     "created_at": now_iso(),
                 })
 

@@ -446,6 +446,62 @@ def test_month_import_validates_before_writing(api, users):
     assert api.get("/api/shifts", params={"date_str": "2032-08-02"}).json() == []
 
 
+def test_month_import_allows_authorized_secondary_roles(api, users):
+    andrea = api.post(
+        "/api/users",
+        json={"name": "Caddeo Andrea", "role": "Autista", "pin": "4411"},
+    )
+    lucia = api.post(
+        "/api/users",
+        json={"name": "Murtas Lucia", "role": "Soccorritore", "pin": "4422"},
+    )
+    assert andrea.status_code == 200, andrea.text
+    assert lucia.status_code == 200, lucia.text
+
+    autisti = by_role(users, "Autista")
+    capoturni = by_role(users, "Capoturno")
+    soccorritori = by_role(users, "Soccorritore")
+    imported = api.post(
+        "/api/shifts/import",
+        json={
+            "replace_month": False,
+            "teams": [
+                {
+                    "date": "2033-09-01",
+                    "shift_type": "Mattina",
+                    "user_ids": [autisti[0]["id"], capoturni[0]["id"], andrea.json()["id"]],
+                },
+                {
+                    "date": "2033-09-01",
+                    "shift_type": "Pomeriggio",
+                    "user_ids": [autisti[1]["id"], lucia.json()["id"], soccorritori[0]["id"]],
+                },
+            ],
+        },
+    )
+    assert imported.status_code == 200, imported.text
+
+    shifts = api.get("/api/shifts", params={"date_str": "2033-09-01"}).json()
+    andrea_shift = next(shift for shift in shifts if shift["user_id"] == andrea.json()["id"])
+    lucia_shift = next(shift for shift in shifts if shift["user_id"] == lucia.json()["id"])
+    assert andrea_shift["role"] == "Soccorritore"
+    assert lucia_shift["role"] == "Capoturno"
+
+    unauthorized = api.post(
+        "/api/shifts/import",
+        json={
+            "replace_month": False,
+            "teams": [{
+                "date": "2033-09-02",
+                "shift_type": "Mattina",
+                "user_ids": [autisti[2]["id"], capoturni[1]["id"], autisti[3]["id"]],
+            }],
+        },
+    )
+    assert unauthorized.status_code == 400
+    assert "non Soccorritore" in unauthorized.json()["detail"]
+
+
 def test_month_generation_has_three_people_and_rest(api, users):
     response = api.post(
         "/api/shifts/generate",

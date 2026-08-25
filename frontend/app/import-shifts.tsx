@@ -18,6 +18,8 @@ import { useUser, User } from "@/src/context/UserContext";
 import { colors, monthNamesIt, SHIFT_TYPES, shiftStyle } from "@/src/theme";
 import { formatIsoDateIt } from "@/src/utils/dates";
 import {
+  canImportUserAsRole,
+  ImportRole,
   normalizeImportName,
   parseShiftImportCsv,
   ShiftImportRow,
@@ -44,7 +46,7 @@ const TEMPLATE = [
   "01/09/2026;Notte;Cognome Nome;Cognome Nome;Cognome Nome",
 ].join("\r\n");
 
-const roleFields: { field: "autista" | "capoturno" | "soccorritore"; role: User["role"] }[] = [
+const roleFields: { field: "autista" | "capoturno" | "soccorritore"; role: ImportRole }[] = [
   { field: "autista", role: "Autista" },
   { field: "capoturno", role: "Capoturno" },
   { field: "soccorritore", role: "Soccorritore" },
@@ -70,7 +72,7 @@ export default function ImportShiftsScreen() {
         const user = lookup.get(normalizeImportName(name));
         if (!user) {
           errors.push(`Riga ${row.line}: “${name}” non è presente nell'app`);
-        } else if (user.role !== role) {
+        } else if (!canImportUserAsRole(user.name, user.role, role)) {
           errors.push(`Riga ${row.line}: ${name} appartiene al gruppo ${user.role}, non ${role}`);
         } else {
           selected.push(user);
@@ -348,4 +350,3 @@ const styles = StyleSheet.create({
   importButtonText: { color: colors.primaryFg, fontSize: 15, fontWeight: "700" },
   disabled: { opacity: 0.45 },
 });
-

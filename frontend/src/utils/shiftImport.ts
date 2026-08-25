@@ -21,6 +21,27 @@ const normalize = (value: string) => value
   .trim()
   .toLocaleLowerCase("it-IT");
 
+export type ImportRole = "Autista" | "Capoturno" | "Soccorritore";
+
+const importRolePersonKey = (value: string) => normalize(value)
+  .split(/\s+/)
+  .filter(Boolean)
+  .sort()
+  .join(" ");
+
+const EXTRA_IMPORT_ROLES: Record<string, ImportRole[]> = {
+  [importRolePersonKey("Andrea Caddeo")]: ["Soccorritore"],
+  [importRolePersonKey("Lucia Murtas")]: ["Capoturno"],
+};
+
+export const canImportUserAsRole = (
+  userName: string,
+  primaryRole: string,
+  importedRole: ImportRole,
+) => primaryRole === importedRole
+  || EXTRA_IMPORT_ROLES[importRolePersonKey(userName)]?.includes(importedRole)
+  || false;
+
 const parseCsvLine = (line: string, delimiter: string) => {
   const values: string[] = [];
   let current = "";
@@ -122,5 +143,6 @@ export const parseShiftImportCsv = (text: string): ShiftImportParseResult => {
   return { rows, errors };
 };
 
-export const normalizeImportName = (value: string) => normalize(value).replace(/\s+/g, " ");
-
+// Spaces inside a person's name are not significant during CSV matching:
+// "Mura Gianfranco" and "Mura Gian Franco" must identify the same user.
+export const normalizeImportName = (value: string) => normalize(value).replace(/\s+/g, "");
