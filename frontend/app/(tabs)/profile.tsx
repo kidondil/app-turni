@@ -27,7 +27,7 @@ type Stats = {
   };
 };
 
-type Leave = { id: string; user_id: string; user_name: string; start_date: string; end_date: string; absence_type?: "Ferie" | "Permesso"; reason?: string; status: string };
+type Leave = { id: string; user_id: string; user_name: string; start_date: string; end_date: string; absence_type?: "Ferie" | "Permesso" | "Malattia"; reason?: string; status: string };
 
 export default function ProfileScreen() {
   const { currentUser, clearUser } = useUser();

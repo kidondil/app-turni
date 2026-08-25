@@ -180,9 +180,34 @@ class ShiftTeamUpsert(BaseModel):
         return value
 
 
+class ShiftImportAbsence(BaseModel):
+    user_id: str
+    start_date: str
+    end_date: str
+    absence_type: Literal["Malattia"] = "Malattia"
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def validate_dates(cls, value: str) -> str:
+        return validate_iso_date(value)
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.start_date > self.end_date:
+            raise ValueError("La data di inizio deve precedere o coincidere con quella di fine")
+        return self
+
+
 class ShiftImportRequest(BaseModel):
-    teams: List[ShiftTeamUpsert] = Field(min_length=1, max_length=500)
+    teams: List[ShiftTeamUpsert] = Field(default_factory=list, max_length=500)
+    absences: List[ShiftImportAbsence] = Field(default_factory=list, max_length=200)
     replace_month: bool = False
+
+    @model_validator(mode="after")
+    def validate_content(self):
+        if not self.teams and not self.absences:
+            raise ValueError("L'importazione non contiene turni o assenze")
+        return self
 
 
 class SwapRequest(BaseModel):
@@ -212,7 +237,7 @@ class LeaveRequest(BaseModel):
     user_name: str
     start_date: str
     end_date: str
-    absence_type: Literal["Ferie", "Permesso"] = "Ferie"
+    absence_type: Literal["Ferie", "Permesso", "Malattia"] = "Ferie"
     reason: Optional[str] = None
     status: str  # pending/approved/rejected/cancelled
     created_at: str
@@ -222,7 +247,7 @@ class LeaveCreate(BaseModel):
     user_id: str
     start_date: str
     end_date: str
-    absence_type: Literal["Ferie", "Permesso"] = "Ferie"
+    absence_type: Literal["Ferie", "Permesso", "Malattia"] = "Ferie"
     reason: Optional[str] = None
 
     @field_validator("start_date", "end_date")
@@ -235,6 +260,15 @@ class LeaveCreate(BaseModel):
         if self.start_date > self.end_date:
             raise ValueError("La data di inizio deve precedere o coincidere con quella di fine")
         return self
+
+
+class CalendarAbsence(BaseModel):
+    id: str
+    user_id: str
+    user_name: str
+    start_date: str
+    end_date: str
+    absence_type: Literal["Malattia"]
 
 
 class Notification(BaseModel):
@@ -1289,16 +1323,25 @@ async def import_shift_teams(
     if len(set(team_keys)) != len(team_keys):
         raise HTTPException(400, "Il file contiene due righe per la stessa data e lo stesso turno")
 
-    months = {team.date[:7] for team in payload.teams}
+    months = {
+        *(team.date[:7] for team in payload.teams),
+        *(absence.start_date[:7] for absence in payload.absences),
+        *(absence.end_date[:7] for absence in payload.absences),
+    }
     if len(months) != 1:
         raise HTTPException(400, "Ogni importazione deve contenere un solo mese")
     month_prefix = next(iter(months))
     year, month = (int(part) for part in month_prefix.split("-"))
 
     referenced_user_ids = list(dict.fromkeys(
-        user_id
-        for team in payload.teams
-        for user_id in team.user_ids
+        [
+            *(
+                user_id
+                for team in payload.teams
+                for user_id in team.user_ids
+            ),
+            *(absence.user_id for absence in payload.absences),
+        ]
     ))
     users = await db.users.find(
         {"id": {"$in": referenced_user_ids}},
@@ -1322,6 +1365,25 @@ async def import_shift_teams(
                     f"{user['name']} appartiene al gruppo {user['role']}, non {imported_role}",
                 )
         prepared_teams.append((team, selected_by_role))
+
+    prepared_absences = []
+    absence_keys = set()
+    for absence in payload.absences:
+        user = users_by_id[absence.user_id]
+        if user.get("role") not in OPERATIONAL_ROLES:
+            raise HTTPException(400, "I volontari non possono essere inseriti in Malattia")
+        key = (absence.user_id, absence.start_date, absence.end_date, absence.absence_type)
+        if key in absence_keys:
+            raise HTTPException(400, f"La Malattia di {user['name']} è presente due volte nel file")
+        if any(
+            existing.user_id == absence.user_id
+            and existing.start_date <= absence.end_date
+            and existing.end_date >= absence.start_date
+            for existing, _ in prepared_absences
+        ):
+            raise HTTPException(400, f"Le righe di Malattia di {user['name']} si sovrappongono")
+        absence_keys.add(key)
+        prepared_absences.append((absence, user))
 
     # Build the schedule that would exist after the import. Validation happens
     # before the first write, so a roster with an error never changes the calendar.
@@ -1354,19 +1416,82 @@ async def import_shift_teams(
         {"status": "approved", "user_id": {"$in": referenced_user_ids}},
         {"_id": 0},
     ).to_list(5000)
+    if payload.replace_month:
+        approved_leaves = [
+            leave for leave in approved_leaves
+            if not (
+                leave.get("source") == "shift_import"
+                and leave.get("import_month") == month_prefix
+                and leave.get("absence_type") == "Malattia"
+            )
+        ]
+    else:
+        approved_leaves = [
+            leave for leave in approved_leaves
+            if not (
+                leave.get("source") == "shift_import"
+                and (
+                    leave.get("user_id"),
+                    leave.get("start_date"),
+                    leave.get("end_date"),
+                    leave.get("absence_type"),
+                ) in absence_keys
+            )
+        ]
+
+    imported_absences = [
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "user_name": user["name"],
+            "start_date": absence.start_date,
+            "end_date": absence.end_date,
+            "absence_type": absence.absence_type,
+            "reason": None,
+            "status": "approved",
+            "source": "shift_import",
+            "import_month": month_prefix,
+            "created_at": now_iso(),
+        }
+        for absence, user in prepared_absences
+    ]
+    planned_leaves = [*approved_leaves, *imported_absences]
     validation_errors = []
     for assignment in imported_assignments:
         leave = next((
-            item for item in approved_leaves
+            item for item in planned_leaves
             if item["user_id"] == assignment["user_id"]
             and item["start_date"] <= assignment["date"] <= item["end_date"]
         ), None)
         if leave:
             validation_errors.append(
-                f"{assignment['user_name']} è in ferie il {format_iso_date_it(assignment['date'])}"
+                f"{assignment['user_name']} risulta in {leave.get('absence_type', 'Ferie').casefold()} "
+                f"il {format_iso_date_it(assignment['date'])}"
             )
 
     planned_shifts = [*retained_shifts, *imported_assignments]
+    for absence in imported_absences:
+        conflicting_shifts = [
+            shift for shift in planned_shifts
+            if shift.get("user_id") == absence["user_id"]
+            and absence["start_date"] <= shift.get("date", "") <= absence["end_date"]
+        ]
+        if conflicting_shifts:
+            validation_errors.append(
+                f"{absence['user_name']} ha {len(conflicting_shifts)} turni nel periodo di malattia"
+            )
+        overlapping_leave = next((
+            leave for leave in approved_leaves
+            if leave.get("user_id") == absence["user_id"]
+            and leave.get("start_date", "") <= absence["end_date"]
+            and leave.get("end_date", "") >= absence["start_date"]
+        ), None)
+        if overlapping_leave:
+            validation_errors.append(
+                f"{absence['user_name']} ha già un'assenza sovrapposta dal "
+                f"{format_iso_date_it(overlapping_leave['start_date'])} al "
+                f"{format_iso_date_it(overlapping_leave['end_date'])}"
+            )
     dates_by_user = defaultdict(set)
     nights_by_user = defaultdict(set)
     for shift in planned_shifts:
@@ -1413,6 +1538,11 @@ async def import_shift_teams(
             shift["id"] for shift in replaced if shift.get("id")
         )
         await db.shifts.delete_many({"date": {"$regex": f"^{month_prefix}"}})
+        await db.leaves.delete_many({
+            "source": "shift_import",
+            "import_month": month_prefix,
+            "absence_type": "Malattia",
+        })
 
     for team, selected_by_role in prepared_teams:
         current_team = []
@@ -1464,6 +1594,27 @@ async def import_shift_teams(
             invalidated_shift_ids.extend(removed_ids)
             await db.shifts.delete_many({"id": {"$in": removed_ids}})
 
+    for absence in imported_absences:
+        absence_query = {
+            "source": "shift_import",
+            "import_month": month_prefix,
+            "user_id": absence["user_id"],
+            "start_date": absence["start_date"],
+            "end_date": absence["end_date"],
+            "absence_type": absence["absence_type"],
+        }
+        existing_absence = await db.leaves.find_one(absence_query, {"_id": 0, "id": 1})
+        if existing_absence:
+            await db.leaves.update_one(
+                absence_query,
+                {"$set": {
+                    "user_name": absence["user_name"],
+                    "status": "approved",
+                }},
+            )
+        else:
+            await db.leaves.insert_one(absence.copy())
+
     invalidated_shift_ids = list(dict.fromkeys(invalidated_shift_ids))
     if invalidated_shift_ids:
         await db.swaps.delete_many({
@@ -1483,6 +1634,7 @@ async def import_shift_teams(
         "month": month_prefix,
         "teams": len(payload.teams),
         "assignments": len(imported_assignments),
+        "absences": len(imported_absences),
         "replaced": payload.replace_month,
     }
 
@@ -2026,6 +2178,44 @@ async def list_leaves(
     return [LeaveRequest(**lv) for lv in leaves]
 
 
+@api_router.get("/calendar-absences", response_model=List[CalendarAbsence])
+async def list_calendar_absences(
+    month: Optional[str] = None,
+    date_str: Optional[str] = None,
+    _: dict = Depends(get_current_user),
+):
+    if date_str:
+        try:
+            date_str = validate_iso_date(date_str)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        period_start = period_end = date_str
+    elif month:
+        try:
+            year, month_number = (int(part) for part in month.split("-"))
+            period_start = date(year, month_number, 1).isoformat()
+            period_end = date(
+                year,
+                month_number,
+                cal_mod.monthrange(year, month_number)[1],
+            ).isoformat()
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Mese non valido. Usa AAAA-MM")
+    else:
+        raise HTTPException(400, "Indica il mese o la data")
+
+    absences = await db.leaves.find(
+        {
+            "absence_type": "Malattia",
+            "status": "approved",
+            "start_date": {"$lte": period_end},
+            "end_date": {"$gte": period_start},
+        },
+        {"_id": 0, "reason": 0},
+    ).sort("user_name", 1).to_list(500)
+    return [CalendarAbsence(**absence) for absence in absences]
+
+
 @api_router.post("/leaves", response_model=LeaveRequest)
 async def create_leave(
     payload: LeaveCreate,
@@ -2037,7 +2227,8 @@ async def create_leave(
         raise HTTPException(404, "Utente non trovato")
     if user.get("role") == ROLE_VOLONTARIO:
         raise HTTPException(400, "I volontari non rientrano nella pianificazione delle ferie")
-    if payload.start_date < today_italy().isoformat():
+    is_sickness = payload.absence_type == "Malattia"
+    if payload.start_date < today_italy().isoformat() and not is_sickness:
         raise HTTPException(400, "Non puoi richiedere ferie per un periodo già trascorso")
     overlapping = await db.leaves.find_one(
         {
@@ -2050,6 +2241,16 @@ async def create_leave(
     )
     if overlapping:
         raise HTTPException(409, "Esiste già una richiesta sovrapposta per questo periodo")
+    if is_sickness:
+        assigned_shifts = await db.shifts.count_documents({
+            "user_id": payload.user_id,
+            "date": {"$gte": payload.start_date, "$lte": payload.end_date},
+        })
+        if assigned_shifts:
+            raise HTTPException(
+                409,
+                f"Riassegna prima i {assigned_shifts} turni presenti nel periodo di malattia",
+            )
     leave = {
         "id": str(uuid.uuid4()),
         "user_id": payload.user_id,
@@ -2058,7 +2259,7 @@ async def create_leave(
         "end_date": payload.end_date,
         "absence_type": payload.absence_type,
         "reason": payload.reason,
-        "status": "pending",
+        "status": "approved" if is_sickness else "pending",
         "created_at": now_iso(),
     }
     await db.leaves.insert_one(leave.copy())
@@ -2069,8 +2270,10 @@ async def create_leave(
     same_role_ids = [member["id"] for member in same_role]
     await create_notifications(
         same_role_ids,
-        f"Richiesta {payload.absence_type.casefold()} da collega",
-        f"{user['name']} ha richiesto {payload.absence_type.casefold()} dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
+        f"{payload.absence_type} registrata" if is_sickness else f"Richiesta {payload.absence_type.casefold()} da collega",
+        f"{user['name']} risulta in malattia dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}"
+        if is_sickness
+        else f"{user['name']} ha richiesto {payload.absence_type.casefold()} dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
         "leave",
     )
     notified_ids.update(same_role_ids)
@@ -2081,8 +2284,17 @@ async def create_leave(
             continue
         await create_notification(
             adm["id"],
-            f"Richiesta {payload.absence_type.casefold()} da approvare",
-            f"{user['name']} ({user['role']}) ha richiesto {payload.absence_type.casefold()} dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
+            "Malattia registrata" if is_sickness else f"Richiesta {payload.absence_type.casefold()} da approvare",
+            f"{user['name']} ({user['role']}) risulta in malattia dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}"
+            if is_sickness
+            else f"{user['name']} ({user['role']}) ha richiesto {payload.absence_type.casefold()} dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
+            "leave",
+        )
+    if is_sickness and current_user["id"] != user["id"]:
+        await create_notification(
+            user["id"],
+            "Malattia registrata",
+            f"È stata registrata la tua malattia dal {format_iso_date_it(payload.start_date)} al {format_iso_date_it(payload.end_date)}",
             "leave",
         )
     return LeaveRequest(**leave)

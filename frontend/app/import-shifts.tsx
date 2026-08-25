@@ -22,6 +22,7 @@ import {
   ImportRole,
   normalizeImportName,
   parseShiftImportCsv,
+  ShiftImportAbsenceRow,
   ShiftImportRow,
 } from "@/src/utils/shiftImport";
 
@@ -35,15 +36,24 @@ type ImportResult = {
   month: string;
   teams: number;
   assignments: number;
+  absences: number;
   replaced: boolean;
 };
 
+type ImportAbsence = {
+  user_id: string;
+  start_date: string;
+  end_date: string;
+  absence_type: "Malattia";
+};
+
 const TEMPLATE = [
-  "Data;Turno;Autista;Capoturno;Soccorritore",
-  "01/09/2026;Mattina;Cognome Nome;Cognome Nome;Cognome Nome",
-  "01/09/2026;Pomeriggio;Cognome Nome;Cognome Nome;Cognome Nome",
-  "01/09/2026;Trasporti;Cognome Nome;Cognome Nome;Cognome Nome",
-  "01/09/2026;Notte;Cognome Nome;Cognome Nome;Cognome Nome",
+  "Data;Data fine;Turno;Autista;Capoturno;Soccorritore;Assente;Tipo assenza",
+  "01/09/2026;;Mattina;Cognome Nome;Cognome Nome;Cognome Nome;;",
+  "01/09/2026;;Pomeriggio;Cognome Nome;Cognome Nome;Cognome Nome;;",
+  "01/09/2026;;Trasporti;Cognome Nome;Cognome Nome;Cognome Nome;;",
+  "01/09/2026;;Notte;Cognome Nome;Cognome Nome;Cognome Nome;;",
+  "01/09/2026;30/09/2026;;;;;Cagnin Giorgia;Malattia",
 ].join("\r\n");
 
 const roleFields: { field: "autista" | "capoturno" | "soccorritore"; role: ImportRole }[] = [
@@ -65,6 +75,7 @@ export default function ImportShiftsScreen() {
     const errors = [...parsed.errors];
     const lookup = new Map(users.map((user) => [normalizeImportName(user.name), user]));
     const teams: ImportTeam[] = [];
+    const absences: ImportAbsence[] = [];
     parsed.rows.forEach((row) => {
       const selected: User[] = [];
       roleFields.forEach(({ field, role }) => {
@@ -87,9 +98,28 @@ export default function ImportShiftsScreen() {
       }
     });
 
-    const months = new Set(parsed.rows.map((row) => row.date.slice(0, 7)));
+    parsed.absences.forEach((absence) => {
+      const user = lookup.get(normalizeImportName(absence.person));
+      if (!user) {
+        errors.push(`Riga ${absence.line}: “${absence.person}” non è presente nell'app`);
+      } else if (user.role === "Volontario") {
+        errors.push(`Riga ${absence.line}: un volontario non può essere inserito in Malattia`);
+      } else {
+        absences.push({
+          user_id: user.id,
+          start_date: absence.start_date,
+          end_date: absence.end_date,
+          absence_type: absence.absence_type,
+        });
+      }
+    });
+
+    const months = new Set([
+      ...parsed.rows.map((row) => row.date.slice(0, 7)),
+      ...parsed.absences.flatMap((absence) => [absence.start_date.slice(0, 7), absence.end_date.slice(0, 7)]),
+    ]);
     if (months.size > 1) errors.push("Il file deve contenere un solo mese");
-    return { errors: [...new Set(errors)], teams };
+    return { errors: [...new Set(errors)], teams, absences };
   }, [parsed, users]);
 
   const rowsByDate = useMemo(() => {
@@ -107,11 +137,11 @@ export default function ImportShiftsScreen() {
   ), [parsed.rows]);
 
   const monthLabel = useMemo(() => {
-    const monthString = parsed.rows[0]?.date.slice(0, 7);
+    const monthString = parsed.rows[0]?.date.slice(0, 7) || parsed.absences[0]?.start_date.slice(0, 7);
     if (!monthString) return "";
     const [year, month] = monthString.split("-").map(Number);
     return `${monthNamesIt[month - 1]} ${year}`;
-  }, [parsed.rows]);
+  }, [parsed.rows, parsed.absences]);
 
   if (!currentUser?.is_admin) {
     return (
@@ -155,11 +185,15 @@ export default function ImportShiftsScreen() {
       const result = await apiRequest<ImportResult>("/api/shifts/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teams: validation.teams, replace_month: replaceMonth }),
+        body: JSON.stringify({
+          teams: validation.teams,
+          absences: validation.absences,
+          replace_month: replaceMonth,
+        }),
       });
       Alert.alert(
         "Importazione completata",
-        `${result.teams} squadre e ${result.assignments} assegnazioni sono state salvate.`,
+        `${result.teams} squadre, ${result.assignments} assegnazioni e ${result.absences} malattie sono state salvate.`,
         [{ text: "Apri calendario", onPress: () => router.replace("/(tabs)/calendar") }],
       );
     } catch (error) {
@@ -170,12 +204,12 @@ export default function ImportShiftsScreen() {
   };
 
   const confirmImport = () => {
-    if (validation.errors.length > 0 || validation.teams.length === 0) return;
+    if (validation.errors.length > 0 || (validation.teams.length === 0 && validation.absences.length === 0)) return;
     Alert.alert(
       replaceMonth ? `Sostituire ${monthLabel}?` : `Aggiornare ${monthLabel}?`,
       replaceMonth
-        ? "Tutti i turni già presenti nel mese verranno eliminati e sostituiti dal file. Ferie e utenti non vengono cancellati."
-        : "Saranno aggiornate soltanto le date e i turni presenti nel file; gli altri resteranno invariati.",
+        ? "I turni e le malattie importate in precedenza per il mese verranno sostituiti dal file. Le assenze inserite manualmente e gli utenti non vengono cancellati."
+        : "Saranno aggiornati soltanto i turni e le malattie presenti nel file; gli altri resteranno invariati.",
       [
         { text: "Annulla", style: "cancel" },
         { text: replaceMonth ? "Sostituisci mese" : "Importa", style: replaceMonth ? "destructive" : "default", onPress: submit },
@@ -198,7 +232,7 @@ export default function ImportShiftsScreen() {
           <Ionicons name="document-text-outline" size={24} color={colors.textPrimary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.infoTitle}>Un file, tutto il mese</Text>
-            <Text style={styles.infoText}>Carica un CSV con una riga per ogni squadra. Prima di salvare vedrai l’anteprima e gli eventuali errori.</Text>
+            <Text style={styles.infoText}>Carica un CSV con le squadre e, se necessario, le righe di Malattia. Prima di salvare vedrai l’anteprima e gli eventuali errori.</Text>
           </View>
         </View>
 
@@ -233,7 +267,7 @@ export default function ImportShiftsScreen() {
                 <Ionicons name="checkmark-circle" size={22} color="#047857" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.successTitle}>File valido: {monthLabel}</Text>
-                  <Text style={styles.successText}>{parsed.rows.length} squadre · {parsed.rows.length * 3} assegnazioni</Text>
+                  <Text style={styles.successText}>{parsed.rows.length} squadre · {parsed.rows.length * 3} assegnazioni · {parsed.absences.length} malattie</Text>
                 </View>
               </View>
             )}
@@ -255,8 +289,8 @@ export default function ImportShiftsScreen() {
                 <Text style={styles.modeTitle}>Sostituisci tutto il mese</Text>
                 <Text style={styles.modeText}>
                   {replaceMonth
-                    ? "I turni esistenti del mese saranno sostituiti dal file."
-                    : "Aggiorna solo le squadre presenti nel file."}
+                    ? "Turni e malattie importate del mese saranno sostituiti dal file."
+                    : "Aggiorna solo squadre e malattie presenti nel file."}
                 </Text>
               </View>
               <Switch
@@ -286,6 +320,22 @@ export default function ImportShiftsScreen() {
                 })}
               </View>
             ))}
+
+            {parsed.absences.length > 0 && (
+              <View style={styles.dayCard}>
+                <Text style={styles.dayTitle}>Malattie</Text>
+                {parsed.absences.map((absence: ShiftImportAbsenceRow) => (
+                  <View key={`${absence.person}-${absence.start_date}-${absence.end_date}`} style={styles.previewRow}>
+                    <View style={[styles.shiftBadge, { backgroundColor: "#EDE9FE", borderColor: "#A78BFA" }]}>
+                      <Text style={[styles.shiftBadgeText, { color: "#5B21B6" }]}>Malattia</Text>
+                    </View>
+                    <Text style={styles.previewNames}>
+                      {absence.person} · {formatIsoDateIt(absence.start_date)}–{formatIsoDateIt(absence.end_date)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.importButton, (validation.errors.length > 0 || submitting) && styles.disabled]}

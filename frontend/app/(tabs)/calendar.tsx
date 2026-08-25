@@ -18,6 +18,7 @@ type Shift = {
 
 type Holiday = { date: string; name: string };
 type VolunteerAttendance = { id: string; date: string; shift_type: string; user_id: string; user_name: string };
+type CalendarAbsence = { id: string; user_id: string; user_name: string; start_date: string; end_date: string; absence_type: "Malattia" };
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -30,6 +31,7 @@ export default function CalendarScreen() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [volunteerAttendances, setVolunteerAttendances] = useState<VolunteerAttendance[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [absences, setAbsences] = useState<CalendarAbsence[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"all" | "mine">("all");
 
@@ -38,14 +40,16 @@ export default function CalendarScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [shiftData, holidayData, volunteerData] = await Promise.all([
+      const [shiftData, holidayData, volunteerData, absenceData] = await Promise.all([
         apiRequest<Shift[]>(`/api/shifts?month=${monthStr}`),
         apiRequest<Holiday[]>(`/api/holidays?year=${year}`),
         apiRequest<VolunteerAttendance[]>(`/api/volunteer-attendances?month=${monthStr}`),
+        apiRequest<CalendarAbsence[]>(`/api/calendar-absences?month=${monthStr}`),
       ]);
       setShifts(shiftData);
       setHolidays(holidayData);
       setVolunteerAttendances(volunteerData);
+      setAbsences(absenceData);
     } catch (e) {
       Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare il calendario"));
     } finally {
@@ -103,6 +107,12 @@ export default function CalendarScreen() {
       .forEach((attendance) => mine.add(attendance.shift_type));
     return SHIFT_TYPES.filter((type) => mine.has(type));
   };
+
+  const sicknessesForDate = (dateStr: string) => absences.filter((absence) => (
+    absence.start_date <= dateStr
+    && absence.end_date >= dateStr
+    && (viewMode === "all" || absence.user_id === currentUser?.id)
+  ));
 
   const handleExport = async () => {
     if (Platform.OS !== "web" || typeof document === "undefined") {
@@ -180,6 +190,7 @@ export default function CalendarScreen() {
               const isHoliday = holidaySet.has(dateStr);
               const mineTypes = myShiftTypes(dateStr);
               const dayShifts = shiftsByDate[dateStr] || [];
+              const daySicknesses = sicknessesForDate(dateStr);
 
               return (
                 <TouchableOpacity
@@ -203,6 +214,11 @@ export default function CalendarScreen() {
                           </View>
                         );
                       })}
+                      {daySicknesses.length > 0 && (
+                        <View style={[styles.shiftPill, { backgroundColor: "#EDE9FE", borderColor: "#A78BFA" }]}>
+                          <Text style={[styles.shiftPillText, { color: "#5B21B6" }]}>Mal</Text>
+                        </View>
+                      )}
                     </View>
                   ) : (
                     <View style={styles.dotsRow}>
@@ -210,6 +226,7 @@ export default function CalendarScreen() {
                       {dayShifts.some((s) => s.shift_type === "Pomeriggio") && <View style={[styles.dot, { backgroundColor: "#F97316" }]} />}
                       {dayShifts.some((s) => s.shift_type === "Trasporti") && <View style={[styles.dot, { backgroundColor: "#3B82F6" }]} />}
                       {dayShifts.some((s) => s.shift_type === "Notte") && <View style={[styles.dot, { backgroundColor: "#111827" }]} />}
+                      {daySicknesses.length > 0 && <View style={[styles.dot, { backgroundColor: "#7C3AED" }]} />}
                     </View>
                   )}
                 </TouchableOpacity>
@@ -235,6 +252,10 @@ export default function CalendarScreen() {
             <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: "#111827" }]} />
               <Text style={styles.legendText}>Notte 20-08</Text>
+            </View>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: "#7C3AED" }]} />
+              <Text style={styles.legendText}>Malattia</Text>
             </View>
             <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: colors.danger }]} />

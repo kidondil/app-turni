@@ -502,6 +502,103 @@ def test_month_import_allows_authorized_secondary_roles(api, users):
     assert "non Soccorritore" in unauthorized.json()["detail"]
 
 
+def test_sickness_is_immediately_active_for_user_and_admin(api, users):
+    patient = by_role(users, "Autista")[1]
+    member_headers = login_headers(api, patient, "1102")
+    created = api.post(
+        "/api/leaves",
+        json={
+            "user_id": patient["id"],
+            "start_date": "2035-01-10",
+            "end_date": "2035-01-12",
+            "absence_type": "Malattia",
+        },
+        headers=member_headers,
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["status"] == "approved"
+
+    calendar = api.get(
+        "/api/calendar-absences",
+        params={"date_str": "2035-01-11"},
+    )
+    assert calendar.status_code == 200, calendar.text
+    assert [absence["user_id"] for absence in calendar.json()] == [patient["id"]]
+    assert create_shift(api, patient, "2035-01-11").status_code == 409
+
+    cancelled = api.patch(
+        f"/api/leaves/{created.json()['id']}/cancel",
+        headers=member_headers,
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert create_shift(api, patient, "2035-01-11").status_code == 200
+
+    second_patient = by_role(users, "Soccorritore")[0]
+    admin_created = api.post(
+        "/api/leaves",
+        json={
+            "user_id": second_patient["id"],
+            "start_date": "2035-02-01",
+            "end_date": "2035-02-03",
+            "absence_type": "Malattia",
+        },
+    )
+    assert admin_created.status_code == 200, admin_created.text
+    assert admin_created.json()["status"] == "approved"
+
+
+def test_month_import_adds_sickness_and_is_idempotent(api, users):
+    cagnin = api.post(
+        "/api/users",
+        json={"name": "Cagnin Giorgia", "role": "Soccorritore", "pin": "4433"},
+    )
+    assert cagnin.status_code == 200, cagnin.text
+    autista = by_role(users, "Autista")[0]
+    capoturno = by_role(users, "Capoturno")[0]
+    soccorritore = by_role(users, "Soccorritore")[0]
+    payload = {
+        "replace_month": False,
+        "teams": [{
+            "date": "2034-10-01",
+            "shift_type": "Mattina",
+            "user_ids": [autista["id"], capoturno["id"], soccorritore["id"]],
+        }],
+        "absences": [{
+            "user_id": cagnin.json()["id"],
+            "start_date": "2034-10-01",
+            "end_date": "2034-10-31",
+            "absence_type": "Malattia",
+        }],
+    }
+    imported = api.post("/api/shifts/import", json=payload)
+    assert imported.status_code == 200, imported.text
+    assert imported.json()["absences"] == 1
+
+    repeated = api.post("/api/shifts/import", json=payload)
+    assert repeated.status_code == 200, repeated.text
+    calendar = api.get(
+        "/api/calendar-absences",
+        params={"month": "2034-10"},
+    )
+    assert calendar.status_code == 200, calendar.text
+    assert [absence["user_name"] for absence in calendar.json()] == ["Cagnin Giorgia"]
+
+    conflict = api.post(
+        "/api/shifts/import",
+        json={
+            "replace_month": False,
+            "teams": [{
+                "date": "2034-10-02",
+                "shift_type": "Mattina",
+                "user_ids": [autista["id"], capoturno["id"], cagnin.json()["id"]],
+            }],
+            "absences": [],
+        },
+    )
+    assert conflict.status_code == 409
+    assert api.get("/api/shifts", params={"date_str": "2034-10-02"}).json() == []
+
+
 def test_month_generation_has_three_people_and_rest(api, users):
     response = api.post(
         "/api/shifts/generate",

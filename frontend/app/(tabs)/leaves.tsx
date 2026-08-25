@@ -14,7 +14,7 @@ type Leave = {
   user_name: string;
   start_date: string;
   end_date: string;
-  absence_type?: "Ferie" | "Permesso";
+  absence_type?: "Ferie" | "Permesso" | "Malattia";
   reason?: string;
   status: string;
   created_at: string;
@@ -110,7 +110,7 @@ export default function LeavesScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Ferie & Permessi</Text>
+          <Text style={styles.title}>Assenze</Text>
           <Text style={styles.subtitle}>Gestisci le richieste di assenza</Text>
         </View>
         <TouchableOpacity style={styles.newBtn} onPress={() => router.push("/leave-new")} testID="new-leave-btn">

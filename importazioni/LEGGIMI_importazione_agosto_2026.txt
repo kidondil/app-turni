@@ -18,7 +18,9 @@ Conversione usata:
 - N = Notte 20:00-08:00;
 - S e R non generano una squadra di lavoro;
 - FERIE non genera una squadra di lavoro;
-- la colonna di Cagnin Giorgia è stata ignorata completamente, come richiesto.
+- in questo vecchio file la colonna di Cagnin Giorgia era stata ignorata;
+- dalle importazioni successive può essere reintegrata con una riga Malattia
+  usando le colonne Data, Data fine, Assente e Tipo assenza.
 
 Conferma sul 15/08/2026:
 Il servizio Trasporti non era attivo. Nel CSV è quindi presente la squadra

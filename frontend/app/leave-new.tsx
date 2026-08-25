@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,17 +10,23 @@ import { DateRangeCalendar } from "@/src/components/DateRangeCalendar";
 import { formatDateInputIt, formatIsoDateIt, parseDateInputIt } from "@/src/utils/dates";
 
 export default function LeaveNewScreen() {
-  const { currentUser } = useUser();
+  const { currentUser, users } = useUser();
   const router = useRouter();
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
-  const [absenceType, setAbsenceType] = useState<"Ferie" | "Permesso">("Ferie");
+  const [absenceType, setAbsenceType] = useState<"Ferie" | "Permesso" | "Malattia">("Ferie");
+  const [selectedUserId, setSelectedUserId] = useState(currentUser?.id || "");
+  const [userPickerOpen, setUserPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
+  useEffect(() => {
+    if (currentUser && !selectedUserId) setSelectedUserId(currentUser.id);
+  }, [currentUser, selectedUserId]);
+
   const submit = async () => {
-    if (!currentUser) return;
+    if (!currentUser || !selectedUserId) return;
     const startIso = parseDateInputIt(startDate);
     const endIso = parseDateInputIt(endDate);
     if (!startIso || !endIso) {
@@ -37,14 +43,14 @@ export default function LeaveNewScreen() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: currentUser.id,
+          user_id: selectedUserId,
           start_date: startIso,
           end_date: endIso,
           absence_type: absenceType,
           reason,
         }),
       });
-      Alert.alert("Richiesta inviata", "Gli amministratori riceveranno la tua richiesta", [
+      Alert.alert(absenceType === "Malattia" ? "Malattia registrata" : "Richiesta inviata", absenceType === "Malattia" ? "Il periodo è stato aggiunto al calendario" : "Gli amministratori riceveranno la tua richiesta", [
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (e) {
@@ -55,6 +61,8 @@ export default function LeaveNewScreen() {
   };
 
   if (!currentUser) return null;
+  const selectableUsers = users.filter((user) => user.role !== "Volontario");
+  const selectedUser = selectableUsers.find((user) => user.id === selectedUserId) || currentUser;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -70,18 +78,31 @@ export default function LeaveNewScreen() {
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.label}>Tipo di assenza</Text>
           <View style={styles.typeRow}>
-            {(["Ferie", "Permesso"] as const).map((type) => (
+            {(["Ferie", "Permesso", "Malattia"] as const).map((type) => (
               <TouchableOpacity
                 key={type}
                 style={[styles.typeButton, absenceType === type && styles.typeButtonActive]}
                 onPress={() => setAbsenceType(type)}
                 testID={`absence-${type.toLowerCase()}`}
               >
-                <Ionicons name={type === "Ferie" ? "airplane-outline" : "time-outline"} size={20} color={absenceType === type ? colors.primaryFg : colors.textSecondary} />
+                <Ionicons name={type === "Ferie" ? "airplane-outline" : type === "Malattia" ? "medkit-outline" : "time-outline"} size={20} color={absenceType === type ? colors.primaryFg : colors.textSecondary} />
                 <Text style={[styles.typeText, absenceType === type && styles.typeTextActive]}>{type}</Text>
               </TouchableOpacity>
             ))}
           </View>
+
+          {currentUser.is_admin && (
+            <>
+              <Text style={styles.label}>Persona interessata</Text>
+              <TouchableOpacity style={styles.userPicker} onPress={() => setUserPickerOpen(true)} testID="absence-user-picker">
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.userPickerName}>{selectedUser.name}</Text>
+                  <Text style={styles.userPickerRole}>{selectedUser.role}</Text>
+                </View>
+                <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </>
+          )}
 
           <Text style={styles.label}>Periodo richiesto</Text>
           <TouchableOpacity style={styles.calendarBtn} onPress={() => setCalendarOpen(true)} testID="open-leave-calendar">
@@ -129,7 +150,7 @@ export default function LeaveNewScreen() {
           <Text style={styles.label}>Motivazione (opzionale)</Text>
           <TextInput
             style={[styles.input, { minHeight: 100, textAlignVertical: "top" }]}
-            placeholder={absenceType === "Ferie" ? "Es: ferie estive" : "Es: visita medica"}
+            placeholder={absenceType === "Ferie" ? "Es: ferie estive" : absenceType === "Malattia" ? "Nota facoltativa (visibile solo agli autorizzati)" : "Es: visita medica"}
             placeholderTextColor={colors.textMuted}
             value={reason}
             onChangeText={setReason}
@@ -158,6 +179,35 @@ export default function LeaveNewScreen() {
         }}
         onClose={() => setCalendarOpen(false)}
       />
+
+      <Modal visible={userPickerOpen} transparent animationType="fade" onRequestClose={() => setUserPickerOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Seleziona persona</Text>
+            <ScrollView style={{ maxHeight: 420 }}>
+              {selectableUsers.map((user) => (
+                <TouchableOpacity
+                  key={user.id}
+                  style={[styles.userOption, user.id === selectedUserId && styles.userOptionActive]}
+                  onPress={() => {
+                    setSelectedUserId(user.id);
+                    setUserPickerOpen(false);
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.userPickerName}>{user.name}</Text>
+                    <Text style={styles.userPickerRole}>{user.role}</Text>
+                  </View>
+                  {user.id === selectedUserId && <Ionicons name="checkmark-circle" size={21} color={colors.primaryDark} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.modalClose} onPress={() => setUserPickerOpen(false)}>
+              <Text style={styles.modalCloseText}>Chiudi</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -174,6 +224,9 @@ const styles = StyleSheet.create({
   typeButtonActive: { borderColor: colors.primaryDark, backgroundColor: colors.primary },
   typeText: { fontSize: 14, fontWeight: "700", color: colors.textSecondary },
   typeTextActive: { color: colors.primaryFg },
+  userPicker: { flexDirection: "row", alignItems: "center", padding: 14, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+  userPickerName: { fontSize: 14, fontWeight: "700", color: colors.textPrimary },
+  userPickerRole: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   calendarBtn: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
   calendarIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
   calendarBtnTitle: { fontSize: 14, fontWeight: "700", color: colors.textPrimary },
@@ -185,4 +238,11 @@ const styles = StyleSheet.create({
   submitBtn: { backgroundColor: colors.primary, padding: 16, borderRadius: 14, alignItems: "center", marginTop: 32 },
   submitBtnDisabled: { opacity: 0.4 },
   submitText: { color: colors.primaryFg, fontWeight: "700", fontSize: 16 },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center", padding: 20 },
+  modalCard: { width: "100%", maxWidth: 480, backgroundColor: colors.surface, borderRadius: 18, padding: 16 },
+  modalTitle: { fontSize: 18, fontWeight: "700", color: colors.textPrimary, marginBottom: 12 },
+  userOption: { flexDirection: "row", alignItems: "center", padding: 12, borderRadius: 11, borderWidth: 1, borderColor: colors.border, marginBottom: 7 },
+  userOptionActive: { borderColor: colors.primaryDark, backgroundColor: "#FEF3C7" },
+  modalClose: { alignItems: "center", paddingVertical: 12, marginTop: 6 },
+  modalCloseText: { color: colors.textPrimary, fontWeight: "700" },
 });

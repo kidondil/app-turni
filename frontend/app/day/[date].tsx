@@ -25,6 +25,15 @@ type VolunteerAttendance = {
   user_name: string;
 };
 
+type CalendarAbsence = {
+  id: string;
+  user_id: string;
+  user_name: string;
+  start_date: string;
+  end_date: string;
+  absence_type: "Malattia";
+};
+
 const formatDateIt = (dateStr: string) => {
   const d = new Date(dateStr);
   const days = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
@@ -38,6 +47,7 @@ export default function DayDetailScreen() {
   const router = useRouter();
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [volunteerAttendances, setVolunteerAttendances] = useState<VolunteerAttendance[]>([]);
+  const [absences, setAbsences] = useState<CalendarAbsence[]>([]);
   const [loading, setLoading] = useState(true);
   const [holiday, setHoliday] = useState<string | null>(null);
   const [volunteerModalType, setVolunteerModalType] = useState<string | null>(null);
@@ -45,13 +55,15 @@ export default function DayDetailScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [shiftData, hols, volunteerData] = await Promise.all([
+      const [shiftData, hols, volunteerData, absenceData] = await Promise.all([
         apiRequest<Shift[]>(`/api/shifts?date_str=${date}`),
         apiRequest<{ date: string; name: string }[]>(`/api/holidays?year=${date?.slice(0, 4)}`),
         apiRequest<VolunteerAttendance[]>(`/api/volunteer-attendances?date_str=${date}`),
+        apiRequest<CalendarAbsence[]>(`/api/calendar-absences?date_str=${date}`),
       ]);
       setShifts(shiftData);
       setVolunteerAttendances(volunteerData);
+      setAbsences(absenceData);
       const h = hols.find((x: { date: string; name: string }) => x.date === date);
       setHoliday(h?.name || null);
     } catch (e) {
@@ -158,6 +170,22 @@ export default function DayDetailScreen() {
       )}
 
       <ScrollView contentContainerStyle={styles.scroll}>
+        {absences.length > 0 && (
+          <View style={styles.absenceBlock}>
+            <View style={styles.absenceHeader}>
+              <Ionicons name="medkit" size={18} color="#5B21B6" />
+              <Text style={styles.absenceTitle}>Malattia</Text>
+            </View>
+            {absences.map((absence) => (
+              <View key={absence.id} style={styles.absenceRow}>
+                <View style={styles.absenceDot} />
+                <Text style={styles.absenceName}>
+                  {absence.user_name} {absence.user_id === currentUser?.id && "(Tu)"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
         {SHIFT_TYPES.map((type) => {
           const ss = shiftStyle(type);
           const members = grouped[type];
@@ -319,6 +347,12 @@ const styles = StyleSheet.create({
   holidayBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, marginHorizontal: 16, backgroundColor: "#FEE2E2", borderRadius: 12, marginBottom: 8 },
   holidayText: { color: colors.danger, fontWeight: "700", fontSize: 13 },
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
+  absenceBlock: { padding: 15, borderRadius: 16, borderWidth: 1, borderColor: "#A78BFA", backgroundColor: "#EDE9FE", marginBottom: 12 },
+  absenceHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 7 },
+  absenceTitle: { fontSize: 16, fontWeight: "800", color: "#5B21B6" },
+  absenceRow: { flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 5 },
+  absenceDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: "#7C3AED" },
+  absenceName: { fontSize: 14, fontWeight: "600", color: "#4C1D95" },
   shiftBlock: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 12 },
   shiftBlockHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   shiftTitle: { fontSize: 18, fontWeight: "700" },
