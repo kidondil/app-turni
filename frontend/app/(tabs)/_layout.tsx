@@ -3,6 +3,7 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/src/theme";
 import { useUser } from "@/src/context/UserContext";
+import AppBackground from "@/src/components/AppBackground";
 
 type IconProps = { color: string; size: number };
 const HomeIcon = ({ color, size }: IconProps) => <Ionicons name="home" size={size} color={color} />;
@@ -16,59 +17,62 @@ export default function TabsLayout() {
   const isVolunteer = currentUser?.role === "Volontario";
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primaryFg,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          height: 70,
-          paddingTop: 8,
-          paddingBottom: 12,
-        },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-      }}
-    >
-      <Tabs.Screen
-        name="home"
-        options={{
-          title: "Oggi",
-          tabBarIcon: HomeIcon,
+    <AppBackground>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          sceneStyle: { backgroundColor: "transparent" },
+          tabBarActiveTintColor: colors.primaryFg,
+          tabBarInactiveTintColor: colors.textMuted,
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            borderTopWidth: 1,
+            height: 70,
+            paddingTop: 8,
+            paddingBottom: 12,
+          },
+          tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
         }}
-      />
-      <Tabs.Screen
-        name="calendar"
-        options={{
-          title: "Calendario",
-          tabBarIcon: CalIcon,
-        }}
-      />
-      <Tabs.Screen
-        name="swaps"
-        options={{
-          title: "Scambi",
-          tabBarIcon: SwapIcon,
-          href: isVolunteer ? null : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="leaves"
-        options={{
-          title: "Ferie",
-          tabBarIcon: LeavesIcon,
-          href: isVolunteer ? null : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profilo",
-          tabBarIcon: PersonIcon,
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="home"
+          options={{
+            title: "Oggi",
+            tabBarIcon: HomeIcon,
+          }}
+        />
+        <Tabs.Screen
+          name="calendar"
+          options={{
+            title: "Calendario",
+            tabBarIcon: CalIcon,
+          }}
+        />
+        <Tabs.Screen
+          name="swaps"
+          options={{
+            title: "Scambi",
+            tabBarIcon: SwapIcon,
+            href: isVolunteer ? null : undefined,
+          }}
+        />
+        <Tabs.Screen
+          name="leaves"
+          options={{
+            title: "Ferie",
+            tabBarIcon: LeavesIcon,
+            href: isVolunteer ? null : undefined,
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: "Profilo",
+            tabBarIcon: PersonIcon,
+          }}
+        />
+      </Tabs>
+    </AppBackground>
   );
 }

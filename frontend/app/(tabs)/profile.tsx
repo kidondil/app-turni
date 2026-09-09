@@ -424,8 +424,8 @@ const leaveStatusStyle = (status: string) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: "transparent" },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
   profileHeader: { flexDirection: "row", alignItems: "center", paddingVertical: 16, backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: colors.border, marginTop: 8 },
   avatar: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },

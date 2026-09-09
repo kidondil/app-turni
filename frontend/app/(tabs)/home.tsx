@@ -232,7 +232,7 @@ export default function HomeScreen() {
               return (
                 <TouchableOpacity key={s.id} style={styles.upcomingCard} onPress={() => router.push(`/day/${s.date}`)}>
                   <View style={[styles.upcomingDot, { backgroundColor: ss.bg, borderColor: ss.border }]}>
-                    <Text style={styles.upcomingDay}>{d.getDate()}</Text>
+                    <Text style={[styles.upcomingDay, s.shift_type === "Notte" && { color: colors.notteText }]}>{d.getDate()}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.upcomingTitle}>{s.shift_type}</Text>
@@ -252,8 +252,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: "transparent" },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
   header: { flexDirection: "row", alignItems: "center", paddingTop: 8, paddingBottom: 20 },
   greeting: { fontSize: 14, color: colors.textSecondary },

@@ -209,7 +209,7 @@ const statusStyle = (s: string) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: "transparent" },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
   title: { fontSize: 24, fontWeight: "700", color: colors.textPrimary, letterSpacing: -0.5 },
   subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
