@@ -2,7 +2,7 @@ import React, { PropsWithChildren } from "react";
 import { StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
-/** Shared, viewport-sized background: stays still while tab content scrolls. */
+/** Opaque background for each tab scene; stays still while its content scrolls. */
 export default function AppBackground({ children }: PropsWithChildren) {
   return (
     <View style={styles.container}>

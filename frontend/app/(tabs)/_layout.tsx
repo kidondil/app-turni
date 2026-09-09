@@ -17,62 +17,61 @@ export default function TabsLayout() {
   const isVolunteer = currentUser?.role === "Volontario";
 
   return (
-    <AppBackground>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          sceneStyle: { backgroundColor: "transparent" },
-          tabBarActiveTintColor: colors.primaryFg,
-          tabBarInactiveTintColor: colors.textMuted,
-          tabBarStyle: {
-            backgroundColor: colors.surface,
-            borderTopColor: colors.border,
-            borderTopWidth: 1,
-            height: 70,
-            paddingTop: 8,
-            paddingBottom: 12,
-          },
-          tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+    <Tabs
+      screenLayout={({ children }) => <AppBackground>{children}</AppBackground>}
+      screenOptions={{
+        headerShown: false,
+        sceneStyle: { backgroundColor: "#F5F8FC" },
+        tabBarActiveTintColor: colors.primaryFg,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          height: 70,
+          paddingTop: 8,
+          paddingBottom: 12,
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+      }}
+    >
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: "Oggi",
+          tabBarIcon: HomeIcon,
         }}
-      >
-        <Tabs.Screen
-          name="home"
-          options={{
-            title: "Oggi",
-            tabBarIcon: HomeIcon,
-          }}
-        />
-        <Tabs.Screen
-          name="calendar"
-          options={{
-            title: "Calendario",
-            tabBarIcon: CalIcon,
-          }}
-        />
-        <Tabs.Screen
-          name="swaps"
-          options={{
-            title: "Scambi",
-            tabBarIcon: SwapIcon,
-            href: isVolunteer ? null : undefined,
-          }}
-        />
-        <Tabs.Screen
-          name="leaves"
-          options={{
-            title: "Ferie",
-            tabBarIcon: LeavesIcon,
-            href: isVolunteer ? null : undefined,
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: "Profilo",
-            tabBarIcon: PersonIcon,
-          }}
-        />
-      </Tabs>
-    </AppBackground>
+      />
+      <Tabs.Screen
+        name="calendar"
+        options={{
+          title: "Calendario",
+          tabBarIcon: CalIcon,
+        }}
+      />
+      <Tabs.Screen
+        name="swaps"
+        options={{
+          title: "Scambi",
+          tabBarIcon: SwapIcon,
+          href: isVolunteer ? null : undefined,
+        }}
+      />
+      <Tabs.Screen
+        name="leaves"
+        options={{
+          title: "Ferie",
+          tabBarIcon: LeavesIcon,
+          href: isVolunteer ? null : undefined,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profilo",
+          tabBarIcon: PersonIcon,
+        }}
+      />
+    </Tabs>
   );
 }
