@@ -22,6 +22,8 @@ Dal Profilo, l'amministratore può inoltre aprire **Importa turni del mese** e c
 
 Le date sono mostrate nel formato italiano `GG/MM/AAAA`. Ferie, Permesso e Malattia si inseriscono digitando il periodo oppure selezionando il primo e l'ultimo giorno dal calendario. La Malattia può essere registrata dall'utente interessato o da un amministratore, diventa subito attiva, non produce ore e impedisce nuove assegnazioni nel periodo; un amministratore può scegliere la persona direttamente nella schermata. Nel calendario è indicata in viola con la sigla `Mal` e nel dettaglio del giorno vengono mostrati i nomi interessati. Ogni operatore può annullare una propria assenza ancora attiva, purché il periodo non sia concluso. Può inoltre annullare uno scambio inviato finché è ancora in attesa; le richieste restano nello storico con lo stato **Annullata** o **Annullato**.
 
+Nel dettaglio aperto dal calendario, uno swipe verso sinistra passa al giorno successivo e uno verso destra al precedente. Si può continuare senza limiti di swipe anche tra mesi e anni diversi; le frecce consentono la stessa navigazione da computer o con tecnologie assistive. Lo scorrimento verticale dei turni resta disponibile e il tasto indietro torna al calendario senza ripercorrere i giorni visitati.
+
 ## Tariffario trasporti
 
 Dal Profilo ogni utente può aprire **Tariffario trasporti**, cercare una delle 66 località e vedere gli importi di Andata, Andata/Ritorno e Visita. I dati incorporati nell'app corrispondono al file **Tariffario Laps.xlsx**, aggiornato al 08/07/2026, con origine Cabras. Gli importi ufficiali prevalgono sempre sul calcolo proporzionale usato per le località non presenti.
