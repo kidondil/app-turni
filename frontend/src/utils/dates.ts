@@ -36,3 +36,11 @@ export const dateFromIso = (isoDate?: string | null) => {
   const [year, month, day] = isoDate.split("-").map(Number);
   return new Date(year, month - 1, day);
 };
+
+export const addDaysToIsoDate = (isoDate: string, days: number) => {
+  const date = dateFromIso(isoDate);
+  if (!date) return isoDate;
+  // Calendar arithmetic also handles month/year boundaries and daylight saving time.
+  date.setDate(date.getDate() + days);
+  return isoDateFromParts(date.getFullYear(), date.getMonth(), date.getDate());
+};

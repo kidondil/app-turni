@@ -1,12 +1,12 @@
-import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal } from "react-native";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, PanResponder, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/src/context/UserContext";
 import { colors, shiftStyle, roleColor, SHIFT_TYPES } from "@/src/theme";
 import { apiErrorMessage, apiRequest } from "@/src/api";
-import { formatIsoDateIt, todayIsoLocal } from "@/src/utils/dates";
+import { addDaysToIsoDate, dateFromIso, formatIsoDateIt, todayIsoLocal } from "@/src/utils/dates";
 
 type Shift = {
   id: string;
@@ -35,7 +35,7 @@ type CalendarAbsence = {
 };
 
 const formatDateIt = (dateStr: string) => {
-  const d = new Date(dateStr);
+  const d = dateFromIso(dateStr)!;
   const days = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
   const months = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
@@ -52,8 +52,22 @@ export default function DayDetailScreen() {
   const [holiday, setHoliday] = useState<string | null>(null);
   const [volunteerModalType, setVolunteerModalType] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [loadedDate, setLoadedDate] = useState<string | null>(null);
+  const activeDate = useRef(date);
+  const loadRequest = useRef(0);
+  const scrollView = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    activeDate.current = date;
+  }, [date]);
 
   const load = useCallback(async () => {
+    const request = ++loadRequest.current;
+    setLoading(true);
+    setShifts([]);
+    setVolunteerAttendances([]);
+    setAbsences([]);
+    setHoliday(null);
     try {
       const [shiftData, hols, volunteerData, absenceData] = await Promise.all([
         apiRequest<Shift[]>(`/api/shifts?date_str=${date}`),
@@ -61,19 +75,55 @@ export default function DayDetailScreen() {
         apiRequest<VolunteerAttendance[]>(`/api/volunteer-attendances?date_str=${date}`),
         apiRequest<CalendarAbsence[]>(`/api/calendar-absences?date_str=${date}`),
       ]);
+      // A slower response must never replace the day reached by a later swipe.
+      if (request !== loadRequest.current || activeDate.current !== date) return;
       setShifts(shiftData);
       setVolunteerAttendances(volunteerData);
       setAbsences(absenceData);
       const h = hols.find((x: { date: string; name: string }) => x.date === date);
       setHoliday(h?.name || null);
     } catch (e) {
-      Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare la giornata"));
+      if (request === loadRequest.current && activeDate.current === date) {
+        Alert.alert("Errore", apiErrorMessage(e, "Impossibile caricare la giornata"));
+      }
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current && activeDate.current === date) {
+        setLoadedDate(date);
+        setLoading(false);
+      }
     }
   }, [date]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    load();
+    return () => { loadRequest.current += 1; };
+  }, [load]));
+
+  const changeDay = useCallback((days: number) => {
+    if (volunteerModalType || submitting) return;
+    const nextDate = addDaysToIsoDate(activeDate.current, days);
+    activeDate.current = nextDate;
+    loadRequest.current += 1;
+    setLoading(true);
+    scrollView.current?.scrollTo({ y: 0, animated: false });
+    // Keep one detail screen in the navigation stack, regardless of swipe count.
+    router.setParams({ date: nextDate });
+  }, [router, submitting, volunteerModalType]);
+
+  const daySwipe = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponderCapture: (_event, gesture) => (
+      !volunteerModalType
+      && !submitting
+      && gesture.numberActiveTouches === 1
+      && Math.abs(gesture.dx) > 18
+      && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5
+    ),
+    onPanResponderRelease: (_event, gesture) => {
+      if (Math.abs(gesture.dx) >= 50 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5) {
+        changeDay(gesture.dx < 0 ? 1 : -1);
+      }
+    },
+  }), [changeDay, submitting, volunteerModalType]);
 
   const requestSwap = (shift: Shift) => {
     router.push({ pathname: "/swap-new", params: { shift_id: shift.id } });
@@ -135,9 +185,7 @@ export default function DayDetailScreen() {
     );
   };
 
-  if (loading) {
-    return <SafeAreaView style={styles.loading}><ActivityIndicator color={colors.primary} size="large" /></SafeAreaView>;
-  }
+  const loadingDay = loading || loadedDate !== date;
 
   const grouped: Record<string, Shift[]> = Object.fromEntries(
     SHIFT_TYPES.map((type) => [type, []]),
@@ -151,7 +199,7 @@ export default function DayDetailScreen() {
   const isPast = !!date && date < todayIsoLocal();
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={styles.container} edges={["top"]} {...daySwipe.panHandlers} testID="day-detail">
       <View style={styles.headerBar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} testID="back-btn">
           <Ionicons name="chevron-back" size={26} color={colors.textPrimary} />
@@ -162,14 +210,43 @@ export default function DayDetailScreen() {
         </View>
       </View>
 
-      {holiday && (
+      <View style={styles.dayNavigation}>
+        <TouchableOpacity
+          onPress={() => changeDay(-1)}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Giorno precedente"
+          disabled={submitting}
+          testID="previous-day"
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.swipeHint}>Scorri per cambiare giorno</Text>
+        <TouchableOpacity
+          onPress={() => changeDay(1)}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Giorno successivo"
+          disabled={submitting}
+          testID="next-day"
+        >
+          <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
+        </TouchableOpacity>
+      </View>
+
+      {!loadingDay && holiday && (
         <View style={styles.holidayBanner}>
           <Ionicons name="star" size={16} color={colors.danger} />
           <Text style={styles.holidayText}>Festività: {holiday}</Text>
         </View>
       )}
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      {loadingDay ? (
+        <View style={styles.loading}>
+          <ActivityIndicator color={colors.primary} size="large" />
+        </View>
+      ) : (
+      <ScrollView ref={scrollView} contentContainerStyle={styles.scroll} testID="day-shifts">
         {absences.length > 0 && (
           <View style={styles.absenceBlock}>
             <View style={styles.absenceHeader}>
@@ -295,6 +372,7 @@ export default function DayDetailScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+      )}
 
       <Modal
         visible={!!volunteerModalType}
@@ -338,12 +416,14 @@ export default function DayDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.background, ...(Platform.OS === "web" ? { touchAction: "pan-y pinch-zoom" } : {}) },
   loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   headerBar: { flexDirection: "row", alignItems: "center", padding: 12, gap: 8 },
   backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   headerDate: { fontSize: 13, color: colors.textSecondary },
   headerDay: { fontSize: 18, fontWeight: "700", color: colors.textPrimary, textTransform: "capitalize" },
+  dayNavigation: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, marginBottom: 4 },
+  swipeHint: { fontSize: 12, color: colors.textSecondary },
   holidayBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, marginHorizontal: 16, backgroundColor: "#FEE2E2", borderRadius: 12, marginBottom: 8 },
   holidayText: { color: colors.danger, fontWeight: "700", fontSize: 13 },
   scroll: { paddingHorizontal: 16, paddingBottom: 24 },
